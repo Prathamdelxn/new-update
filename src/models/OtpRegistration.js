@@ -28,6 +28,11 @@ const OtpRegistrationSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    industryType: {
+      type: String,
+      enum: ["construction", "interior"],
+      default: "construction",
+    },
     createdAt: {
       type: Date,
       default: Date.now,
@@ -40,4 +45,5 @@ const OtpRegistrationSchema = new mongoose.Schema(
 );
 
 
+delete mongoose.models.OtpRegistration;
 export default mongoose.models.OtpRegistration || mongoose.model("OtpRegistration", OtpRegistrationSchema);

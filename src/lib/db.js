@@ -33,6 +33,15 @@ async function dbConnect(retryCount = 0) {
 
     if (!cached.promise) {
       console.log(`🔄 Connecting to MongoDB (${retryCount + 1}/${MAX_RETRIES})...`);
+      
+      // Ensure Google/Cloudflare DNS is used for SRV resolution
+      try {
+        dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+        dns.setDefaultResultOrder("ipv4first");
+      } catch (e) {
+        console.warn("⚠️ Custom DNS configuration error:", e.message);
+      }
+
       const maskedUri = MONGODB_URI.replace(/:([^@]+)@/, ":****@");
       console.log(`📍 URI: ${maskedUri}`);
 

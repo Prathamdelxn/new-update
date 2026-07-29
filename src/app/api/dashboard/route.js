@@ -10,8 +10,16 @@ export const GET = withAuth(async function (req) {
   try {
     await dbConnect();
 
-    const orgId = req.user.organizationId;
     const userDoc = await User.findById(req.user.id).populate("role");
+    const rawOrgId = req.user.organizationId || userDoc?.organization;
+    const orgId = typeof rawOrgId === 'object' && rawOrgId?._id
+      ? rawOrgId._id.toString()
+      : typeof rawOrgId === 'string' && rawOrgId.length === 24
+      ? rawOrgId
+      : typeof rawOrgId === 'string'
+      ? (rawOrgId.match(/([a-f0-9]{24})/i)?.[1] || rawOrgId)
+      : rawOrgId;
+
     const isAdmin = userDoc?.role?.name === "Admin" || req.user.role === "Admin";
 
     let projectQuery = { organization: orgId };

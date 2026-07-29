@@ -35,13 +35,16 @@ export async function POST(req) {
       return NextResponse.json({ message: "User already exists" }, { status: 400 });
     }
 
-    const { name, password, phoneNumber } = otpRecord;
+    const { name, password, phoneNumber, industryType } = otpRecord;
 
     // 1. Create Organization for this admin (placeholder owner, updated below)
     const org = await Organization.create({
       name: `${name}'s Workspace`,
       owner: new mongoose.Types.ObjectId(),
+      industryType: industryType || "construction",
     });
+
+    console.log(`[DEV] Register Verify - Created Organization with industryType: "${org.industryType}"`);
 
     // 2. Create Admin Role scoped to this organization
     const adminRole = await Role.create({
@@ -214,6 +217,8 @@ export async function POST(req) {
           name: user.name,
           email: user.email,
           role: adminRole.name,
+          organization: org,
+          industryType: org.industryType || "construction",
         },
       },
       { status: 201 }

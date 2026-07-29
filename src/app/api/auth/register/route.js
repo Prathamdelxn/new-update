@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import dbConnect from "@/lib/db";
 import User from "@/models/User";
@@ -9,7 +9,7 @@ import { otpEmail } from "@/lib/emailTemplates";
 export async function POST(req) {
   try {
     await dbConnect();
-    const { name, email, password, phoneNumber } = await req.json();
+    const { name, email, password, phoneNumber, industryType } = await req.json();
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -30,12 +30,12 @@ export async function POST(req) {
     // Store in OtpRegistration (upsert to handle if they try again)
     await OtpRegistration.findOneAndUpdate(
       { email },
-      { name, email, password: hashedPassword, phoneNumber, otp, createdAt: Date.now() },
+      { name, email, password: hashedPassword, phoneNumber, industryType: industryType || "construction", otp, createdAt: Date.now() },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
     // Development fallback so user isn't stuck if Gmail limit is exceeded
-    console.log(`[DEV] Registration OTP for ${email}: ${otp}`);
+    console.log(`[DEV] Registration initiation for ${email} with industryType: "${industryType}" (OTP: ${otp})`);
 
     // Send email
     await sendEmail({

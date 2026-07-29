@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server"; // touch to trigger rebuild
+import { NextResponse } from "next/server"; // touch to trigger rebuild
 import dbConnect from "@/lib/db";
 import User from "@/models/User";
 import Role from "@/models/Role"; // Ensure Role schema is registered for population
@@ -9,7 +9,7 @@ export async function POST(req) {
     await dbConnect();
     const { email, password } = await req.json();
     // Find user and include password for comparison
-    const user = await User.findOne({ email }).select("+password").populate("role");
+    const user = await User.findOne({ email }).select("+password").populate("role").populate("organization");
 
     if (!user) {
       return NextResponse.json(
@@ -58,7 +58,13 @@ export async function POST(req) {
           name: user.name,
           email: user.email,
           role: user.role,
-          organizationId: user.organization?.toString(),
+          organizationId: user.organization?._id
+            ? user.organization._id.toString()
+            : typeof user.organization === 'string' && user.organization.length === 24
+            ? user.organization
+            : undefined,
+          organization: user.organization,
+          industryType: user.organization?.industryType || "construction",
         },
       },
       { status: 200 }

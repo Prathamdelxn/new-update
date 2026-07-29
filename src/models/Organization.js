@@ -17,6 +17,11 @@ const OrganizationSchema = new mongoose.Schema(
       ref: "Subscription",
       default: null,
     },
+    industryType: {
+      type: String,
+      enum: ["construction", "interior"],
+      default: "construction",
+    },
   },
   {
     timestamps: true,
@@ -29,5 +34,5 @@ const OrganizationSchema = new mongoose.Schema(
   }
 );
 
-
+delete mongoose.models.Organization 
 export default mongoose.models.Organization || mongoose.model("Organization", OrganizationSchema);

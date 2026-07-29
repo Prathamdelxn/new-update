@@ -1,6 +1,11 @@
 import mongoose from "mongoose";
 import dns from "dns";
 
+// Pre-register Mongoose schemas for population references across Serverless functions
+import "@/models/Organization";
+import "@/models/Role";
+import "@/models/User";
+
 // DNS Fix for SRV resolution
 try {
   dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"; // touch to trigger rebuild
 import dbConnect from "@/lib/db";
 import User from "@/models/User";
 import Role from "@/models/Role"; // Ensure Role schema is registered for population
-import Organization from "@/models/Organization"; // Ensure Organization schema is registered
+import Organization from "@/models/Organization"; // Ensure Organization schema is registered for population
 import { generateAccessToken, generateRefreshToken } from "@/lib/auth";
 export async function POST(req) {
   try {

@@ -39,7 +39,6 @@ const FFEItemSchema = new mongoose.Schema(
 
     // Specifications
     finish:     { type: String, trim: true },   // "Matte Black", "Brushed Gold"
-    colorCode:  { type: String, trim: true },   // "#1A2B3C" or "RAL 7016"
     dimensions: { type: String, trim: true },   // "1800 × 900 × 750 mm"
     brand:      { type: String, trim: true },
     modelNo:    { type: String, trim: true },
@@ -52,6 +51,9 @@ const FFEItemSchema = new mongoose.Schema(
       default: "Planned",
       index: true,
     },
+    poNumber:           { type: String, trim: true },  // Purchase order / order reference
+    leadTimeDays:        { type: Number },              // Expected supplier lead time
+    warrantyMonths:      { type: Number },              // Warranty period in months
     orderedDate:        { type: Date },
     expectedDelivery:   { type: Date },
     actualDelivery:     { type: Date },

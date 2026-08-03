@@ -81,6 +81,11 @@ const SiteSurveySchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    ceilingHeightUnit: {
+      type: String,
+      enum: ['ft', 'm', 'in', 'mm', 'cm'],
+      default: 'ft',
+    },
     naturalLighting: {
       type: String,
       enum: ['Excellent', 'Good', 'Limited', 'None'],
@@ -100,6 +105,40 @@ const SiteSurveySchema = new mongoose.Schema(
     clientStylePreference: {
       type: String,
       trim: true,
+    },
+    wallCondition: {
+      type: String,
+      enum: ['Solid Brick', 'Gypsum Drywall', 'RCC Concrete', 'Mixed'],
+      default: 'Solid Brick',
+    },
+    dampnessObserved: {
+      type: Boolean,
+      default: false,
+    },
+    dampnessNotes: {
+      type: String,
+      trim: true,
+    },
+    elevatorAccessibility: {
+      type: String,
+      enum: ['Service Elevator Available', 'Passenger Elevator Only', 'Stairs Only'],
+      default: 'Service Elevator Available',
+    },
+    elevatorCapacityKg: {
+      type: Number,
+    },
+    electricalPhase: {
+      type: String,
+      enum: ['Single Phase', 'Three Phase', 'Unsure'],
+      default: 'Single Phase',
+    },
+    acPipingReady: {
+      type: Boolean,
+      default: false,
+    },
+    plumbingDrainReady: {
+      type: Boolean,
+      default: false,
     },
     additionalPhotos: [{ type: String }],
   },

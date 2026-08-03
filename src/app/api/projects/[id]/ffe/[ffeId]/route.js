@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import FFEItem from "@/models/FFEItem";
-import { withSubscription, withPermission } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 
 // PATCH /api/projects/[id]/ffe/[ffeId]
-export const PATCH = withSubscription(withPermission(async function (req, { params }) {
+export const PATCH = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { ffeId } = await params;
@@ -17,8 +17,9 @@ export const PATCH = withSubscription(withPermission(async function (req, { para
 
     const allowed = [
       "name", "category", "description", "quantity", "unit", "unitCost",
-      "finish", "colorCode", "dimensions", "brand", "modelNo", "supplier",
-      "status", "orderedDate", "expectedDelivery", "actualDelivery",
+      "finish", "dimensions", "brand", "modelNo", "supplier",
+      "status", "poNumber", "leadTimeDays", "warrantyMonths",
+      "orderedDate", "expectedDelivery", "actualDelivery",
       "installedDate", "images", "notes", "room",
     ];
     allowed.forEach(k => { if (updates[k] !== undefined) item[k] = updates[k]; });
@@ -30,10 +31,10 @@ export const PATCH = withSubscription(withPermission(async function (req, { para
   } catch (error) {
     return NextResponse.json({ message: "Error updating FFE item" }, { status: 500 });
   }
-}, "interior"), "ffe:update");
+}, "ffe:update");
 
 // DELETE /api/projects/[id]/ffe/[ffeId]
-export const DELETE = withSubscription(withPermission(async function (req, { params }) {
+export const DELETE = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { ffeId } = await params;
@@ -47,4 +48,4 @@ export const DELETE = withSubscription(withPermission(async function (req, { par
   } catch (error) {
     return NextResponse.json({ message: "Error deleting FFE item" }, { status: 500 });
   }
-}, "interior"), "ffe:delete");
+}, "ffe:delete");

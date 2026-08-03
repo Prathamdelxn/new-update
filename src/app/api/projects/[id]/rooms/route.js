@@ -2,12 +2,10 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Room from "@/models/Room";
 import Project from "@/models/Project";
-import { withSubscription, withPermission } from "@/lib/middleware";
-
-const GOLD_ROOM_LIMIT = 20;
+import { withPermission } from "@/lib/middleware";
 
 // GET /api/projects/[id]/rooms
-export const GET = withSubscription(withPermission(async function (req, { params }) {
+export const GET = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { id } = await params;
@@ -20,10 +18,10 @@ export const GET = withSubscription(withPermission(async function (req, { params
   } catch (error) {
     return NextResponse.json({ message: "Error fetching rooms" }, { status: 500 });
   }
-}, "interior"), "rooms:view");
+}, "rooms:view");
 
 // POST /api/projects/[id]/rooms
-export const POST = withSubscription(withPermission(async function (req, { params }) {
+export const POST = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { id } = await params;
@@ -35,22 +33,6 @@ export const POST = withSubscription(withPermission(async function (req, { param
     }
     if (project.projectType !== "Interior") {
       return NextResponse.json({ message: "Rooms can only be added to Interior projects" }, { status: 400 });
-    }
-
-    // Gold plan: max 20 rooms per project. Platinum (interior_advanced): unlimited.
-    const sub = req.subscription;
-    const hasAdvanced = sub?.limits?.features?.includes("interior_advanced");
-    if (!hasAdvanced) {
-      const count = await Room.countDocuments({ project: id });
-      if (count >= GOLD_ROOM_LIMIT) {
-        return NextResponse.json(
-          {
-            message: `Gold plan supports up to ${GOLD_ROOM_LIMIT} rooms per project. Upgrade to Platinum for unlimited rooms.`,
-            code: "ROOM_LIMIT_REACHED",
-          },
-          { status: 403 }
-        );
-      }
     }
 
     const room = new Room({
@@ -70,4 +52,4 @@ export const POST = withSubscription(withPermission(async function (req, { param
   } catch (error) {
     return NextResponse.json({ message: "Error creating room" }, { status: 500 });
   }
-}, "interior"), "rooms:create");
+}, "rooms:create");

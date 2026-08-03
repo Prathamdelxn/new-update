@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Room from "@/models/Room";
-import { withSubscription, withPermission } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 
 // GET /api/projects/[id]/rooms/[roomId]
-export const GET = withSubscription(withPermission(async function (req, { params }) {
+export const GET = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { roomId } = await params;
@@ -18,10 +18,10 @@ export const GET = withSubscription(withPermission(async function (req, { params
   } catch (error) {
     return NextResponse.json({ message: "Error fetching room" }, { status: 500 });
   }
-}, "interior"), "rooms:view");
+}, "rooms:view");
 
 // PATCH /api/projects/[id]/rooms/[roomId]
-export const PATCH = withSubscription(withPermission(async function (req, { params }) {
+export const PATCH = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { roomId } = await params;
@@ -40,10 +40,10 @@ export const PATCH = withSubscription(withPermission(async function (req, { para
   } catch (error) {
     return NextResponse.json({ message: "Error updating room" }, { status: 500 });
   }
-}, "interior"), "rooms:update");
+}, "rooms:update");
 
 // DELETE /api/projects/[id]/rooms/[roomId]
-export const DELETE = withSubscription(withPermission(async function (req, { params }) {
+export const DELETE = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { roomId } = await params;
@@ -57,4 +57,4 @@ export const DELETE = withSubscription(withPermission(async function (req, { par
   } catch (error) {
     return NextResponse.json({ message: "Error deleting room" }, { status: 500 });
   }
-}, "interior"), "rooms:delete");
+}, "rooms:delete");

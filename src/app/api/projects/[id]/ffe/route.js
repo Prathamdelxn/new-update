@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import FFEItem from "@/models/FFEItem";
 import Project from "@/models/Project";
-import { withSubscription, withPermission } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 
 // GET /api/projects/[id]/ffe
 // Optional query: ?room=<roomId>  to filter by room
-export const GET = withSubscription(withPermission(async function (req, { params }) {
+export const GET = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { id } = await params;
@@ -32,10 +32,10 @@ export const GET = withSubscription(withPermission(async function (req, { params
   } catch (error) {
     return NextResponse.json({ message: "Error fetching FFE items" }, { status: 500 });
   }
-}, "interior"), "ffe:view");
+}, "ffe:view");
 
 // POST /api/projects/[id]/ffe
-export const POST = withSubscription(withPermission(async function (req, { params }) {
+export const POST = withPermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { id } = await params;
@@ -44,9 +44,6 @@ export const POST = withSubscription(withPermission(async function (req, { param
     const project = await Project.findById(id).select("organization projectType");
     if (!project) {
       return NextResponse.json({ message: "Project not found" }, { status: 404 });
-    }
-    if (project.projectType !== "Interior") {
-      return NextResponse.json({ message: "FFE items can only be added to Interior projects" }, { status: 400 });
     }
 
     const item = new FFEItem({
@@ -60,12 +57,14 @@ export const POST = withSubscription(withPermission(async function (req, { param
       unit:             body.unit,
       unitCost:         body.unitCost,
       finish:           body.finish,
-      colorCode:        body.colorCode,
       dimensions:       body.dimensions,
       brand:            body.brand,
       modelNo:          body.modelNo,
       supplier:         body.supplier,
       status:           body.status,
+      poNumber:         body.poNumber,
+      leadTimeDays:     body.leadTimeDays,
+      warrantyMonths:   body.warrantyMonths,
       orderedDate:      body.orderedDate,
       expectedDelivery: body.expectedDelivery,
       images:           body.images || [],
@@ -79,4 +78,4 @@ export const POST = withSubscription(withPermission(async function (req, { param
   } catch (error) {
     return NextResponse.json({ message: "Error creating FFE item" }, { status: 500 });
   }
-}, "interior"), "ffe:create");
+}, "ffe:create");

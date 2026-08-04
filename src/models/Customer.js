@@ -30,7 +30,8 @@ const CustomerSchema = new mongoose.Schema(
       type: String,
       enum: [
         "New Lead", "Contacted", "Meeting Scheduled", "Measurement Done", 
-        "Requirement Completed", "Design Approved", "Quotation Sent", 
+        "Requirements Gathering", "Requirement Completed", "Design Approved", 
+        "Quotation Pending", "Quotation Sent", "Negotiation",
         "Booking Pending", "Won", "Lost"
       ],
       default: "New Lead",

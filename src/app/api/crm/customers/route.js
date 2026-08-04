@@ -50,9 +50,18 @@ export const POST = withAuth(async function (req) {
     await dbConnect();
     const data = await req.json();
 
-    // Auto-generate Lead Number (e.g. LD-1001)
-    const count = await Customer.countDocuments({ organization: req.user.organizationId });
-    const leadNumber = `LD-${1001 + count}`;
+    // Auto-generate Lead Number (e.g. LD-1001) safely by finding true maximum across all orgs
+    const customers = await Customer.find({}).select('leadNumber');
+    let maxNum = 1000;
+    for (const c of customers) {
+      if (c.leadNumber && c.leadNumber.startsWith('LD-')) {
+        const num = parseInt(c.leadNumber.replace('LD-', ''), 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+    const leadNumber = `LD-${maxNum + 1}`;
 
     const newCustomer = new Customer({
       ...data,
@@ -76,7 +85,11 @@ export const POST = withAuth(async function (req) {
 
     // Handle duplicate key error for unique fields
     if (error.code === 11000) {
-      return NextResponse.json({ message: "Duplicate entry found for unique field" }, { status: 400 });
+      let duplicateField = "unique field";
+      if (error.keyPattern) {
+        duplicateField = Object.keys(error.keyPattern)[0];
+      }
+      return NextResponse.json({ message: `Duplicate entry found for ${duplicateField}. Please use a different value.` }, { status: 400 });
     }
 
     return NextResponse.json(

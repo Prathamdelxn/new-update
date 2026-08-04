@@ -74,8 +74,6 @@ export async function POST(req) {
           "sitesurvey:view",
           "attendance:view", "attendance:report:view",
           "handover:view", "handover:request",
-          "ffe:view", "ffe:create", "ffe:update",
-          "rooms:view", "rooms:create", "rooms:update",
           "reports:view", "chat:message"
         ],
         isSystemRole: false,
@@ -110,7 +108,6 @@ export async function POST(req) {
           "snags:view", "snags:create", "snags:close",
           "handover:view", "handover:approve", "handover:reject",
           "warranty:view", "warranty:create",
-          "ffe:view",
           "reports:view",
           "chat:message"
         ],
@@ -132,7 +129,6 @@ export async function POST(req) {
           "risks:view", "risks:create", "risks:update",
           "attendance:checkin", "attendance:checkout",
           "attendance:view", "attendance:manage", "attendance:report:view",
-          "rooms:view", "rooms:update",
           "chat:message"
         ],
         description: "Labour-attendance manager: sees worker attendance, resolves late/absent/half-day corrections, assigns work, and manages daily site execution.",

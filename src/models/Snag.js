@@ -29,17 +29,6 @@ const SnagSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    room: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Room",
-      default: null,
-      index: true,
-    },
-    interiorCategory: {
-      type: String,
-      enum: ["Flooring", "Walls", "Ceiling", "Furniture", "Fixtures", "Plumbing", "Electrical", "Other"],
-      default: null,
-    },
     organization: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Organization",

@@ -30,7 +30,7 @@ const OtpRegistrationSchema = new mongoose.Schema(
     },
     industryType: {
       type: String,
-      enum: ["construction", "interior"],
+      enum: ["construction"],
       default: "construction",
     },
     createdAt: {

@@ -54,7 +54,7 @@ async function seed() {
         description: `This is an auto-generated project for admin ${targetEmail}.`,
         currency: "AED",
         area: 100 + (i * 10),
-        projectType: i % 2 === 0 ? "Interior" : "Construction",
+        projectType: "Construction",
         status: "Initialized",
         priority: ["Low", "Medium", "High", "Urgent"][i % 4],
         organization: user.organization,

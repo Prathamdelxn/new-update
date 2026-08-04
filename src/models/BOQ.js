@@ -14,12 +14,6 @@ const BOQItemSchema = new mongoose.Schema({
   quantity: { type: Number, default: 0 },
   unitCost: { type: Number, default: 0 },
   totalCost: { type: Number, default: 0 },
-  room: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Room",
-    default: null,
-    index: true,
-  },
   remark: { type: String },
   version: { type: Number, default: 1 },
   isLatest: { type: Boolean, default: true },

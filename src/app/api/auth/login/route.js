@@ -4,7 +4,6 @@ import User from "@/models/User";
 import Role from "@/models/Role"; // Ensure Role schema is registered for population
 import Organization from "@/models/Organization"; // Ensure Organization schema is registered for population
 import { generateAccessToken, generateRefreshToken } from "@/lib/auth";
-
 export async function POST(req) {
   try {
     await dbConnect();
@@ -43,7 +42,7 @@ export async function POST(req) {
             userName: user.name,
             userRole: user.role?.name || "User",
             action: "Login",
-            details: "User logged in successfully",
+            details: `User logged in successfully`,
           },
         },
       }
@@ -73,7 +72,7 @@ export async function POST(req) {
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json(
-      { message: "Error during login" },
+      { message: `Error during login: ${error.message}`, error: error.stack },
       { status: 500 }
     );
   }

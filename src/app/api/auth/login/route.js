@@ -42,7 +42,7 @@ export async function POST(req) {
             userName: user.name,
             userRole: user.role?.name || "User",
             action: "Login",
-            details: "User logged in successfully",
+            details: `User logged in successfully`,
           },
         },
       }

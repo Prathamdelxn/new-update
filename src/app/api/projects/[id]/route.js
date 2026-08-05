@@ -25,7 +25,12 @@ export const GET = withAuth(async function (req, { params }) {
       return NextResponse.json({ message: "Project not found" }, { status: 404 });
     }
 
-    return NextResponse.json(project);
+    const survey = await SiteSurvey.findOne({ project: id }, { status: 1, rejectionReason: 1 });
+    const projectObj = project.toObject();
+    projectObj.surveyStatus = survey ? survey.status : null;
+    projectObj.surveyRejectionReason = survey ? survey.rejectionReason : null;
+
+    return NextResponse.json(projectObj);
   } catch (error) {
     return NextResponse.json({ message: "Error fetching project" }, { status: 500 });
   }

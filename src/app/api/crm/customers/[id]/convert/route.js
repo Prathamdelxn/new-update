@@ -39,7 +39,7 @@ export const POST = withAuth(async function(req, { params }) {
     // Create the Project
     const newProject = await Project.create({
       customer: customer._id,
-      projectName: `${customer.name}'s ${customer.propertyType || 'Interior'} Project`,
+      projectName: `${customer.name}'s ${customer.propertyType || 'Construction'} Project`,
       totalBudget: totalBudget,
       agreedQuotationVersion: version,
       status: 'Planning',

@@ -14,7 +14,7 @@ export const PLAN_DEFAULTS = {
     storageGB: 25,
     features: [
       "basic_boq", "milestones", "materials", "issues", "risks", "documents",
-      "boq_import", "interior", "custom_roles", "export_reports",
+      "boq_import", "custom_roles", "export_reports",
     ],
   },
   Platinum: {
@@ -23,8 +23,8 @@ export const PLAN_DEFAULTS = {
     storageGB: 100,
     features: [
       "basic_boq", "milestones", "materials", "issues", "risks", "documents",
-      "boq_import", "interior", "custom_roles", "export_reports", "arabic", "api_access",
-      "interior_advanced", "plan_annotations",
+      "boq_import", "custom_roles", "export_reports", "arabic", "api_access",
+      "plan_annotations",
     ],
   },
 };

@@ -24,15 +24,6 @@ const MaterialSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    room: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Room",
-      default: null,
-      index: true,
-    },
-    // Interior finish details (optional — populated for Interior projects)
-    finish:    { type: String, trim: true },
-    colorCode: { type: String, trim: true },
     supplier:  { type: String, trim: true },
     totalReceived: {
       type: Number,

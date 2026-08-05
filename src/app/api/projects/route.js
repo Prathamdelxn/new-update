@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
-import Customer from "@/models/Customer";
 import { withAuth } from "@/lib/middleware"; // trigger rebuild
 
 export const POST = withAuth(async function (req) {
@@ -9,46 +8,50 @@ export const POST = withAuth(async function (req) {
     await dbConnect();
     const data = await req.json();
 
-    const { customerId, quotationIndex } = data;
+    const {
+      name,
+      description,
+      category,
+      startDate,
+      endDate,
+      needSiteSurvey,
+      projectType,
+      budget,
+      currency,
+      areaUnit,
+      area,
+      documents,
+      drawings,
+      siteLocation,
+      attendanceRadius,
+      templateId,
+      createdBy,
+    } = data;
 
-    if (!customerId || quotationIndex === undefined) {
-      return NextResponse.json({ message: "Customer ID and Quotation Index are required" }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ message: "Project name is required" }, { status: 400 });
     }
 
-    // 1. Find the customer
-    const customer = await Customer.findOne({ 
-      _id: customerId, 
-      organization: req.user.organizationId 
-    });
-
-    if (!customer) {
-      return NextResponse.json({ message: "Customer not found" }, { status: 404 });
-    }
-
-    // 2. Validate Quotation
-    const acceptedQuotation = customer.quotations[quotationIndex];
-    if (!acceptedQuotation) {
-      return NextResponse.json({ message: "Quotation not found" }, { status: 404 });
-    }
-    if (acceptedQuotation.status !== 'Accepted') {
-      return NextResponse.json({ message: "Only accepted quotations can be converted to projects" }, { status: 400 });
-    }
-
-    // 3. Create the Project
     const project = await Project.create({
-      customer: customer._id,
-      projectName: `${customer.name}'s Property`,
-      totalBudget: acceptedQuotation.grandTotal,
-      agreedQuotationVersion: acceptedQuotation.version,
+      name,
+      description,
+      category,
+      templateId,
+      startDate,
+      endDate,
+      needSiteSurvey,
+      projectType,
+      budget,
+      currency,
+      areaUnit,
+      area,
+      documents,
+      drawings,
+      siteLocation,
+      attendanceRadius,
       organization: req.user.organizationId,
-      createdBy: req.user.id
+      createdBy: req.user.id || createdBy,
     });
-
-    // 4. Update Customer status to Converted if not already
-    if (customer.status !== 'Converted') {
-      customer.status = 'Converted';
-      await customer.save();
-    }
 
     return NextResponse.json(project, { status: 201 });
 

@@ -16,6 +16,17 @@ export const PATCH = withAuth(async function (req, { params }) {
     delete updateData.organization;
     delete updateData.createdBy;
 
+    const existing = await Transaction.findOne({ _id: transactionId, organization: req.user.organizationId });
+    if (!existing) {
+      return NextResponse.json({ message: "Transaction not found" }, { status: 404 });
+    }
+    if (existing.linkedPurchase) {
+      return NextResponse.json(
+        { message: "This transaction was auto-generated from a Purchase Order and can't be edited directly. Manage it via the Purchase Order instead." },
+        { status: 403 }
+      );
+    }
+
     const transaction = await Transaction.findOneAndUpdate(
       { _id: transactionId, organization: req.user.organizationId },
       { $set: updateData },
@@ -42,9 +53,20 @@ export const DELETE = withAuth(async function (req, { params }) {
     const { id: transactionId } = await params;
     await dbConnect();
 
-    const transaction = await Transaction.findOneAndDelete({ 
+    const existing = await Transaction.findOne({ _id: transactionId, organization: req.user.organizationId });
+    if (!existing) {
+      return NextResponse.json({ message: "Transaction not found" }, { status: 404 });
+    }
+    if (existing.linkedPurchase) {
+      return NextResponse.json(
+        { message: "This transaction was auto-generated from a Purchase Order and can't be deleted directly. Manage it via the Purchase Order instead." },
+        { status: 403 }
+      );
+    }
+
+    const transaction = await Transaction.findOneAndDelete({
       _id: transactionId,
-      organization: req.user.organizationId 
+      organization: req.user.organizationId
     });
 
     if (!transaction) {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Annotation from "@/models/Annotation";
 import Project from "@/models/Project";
-import { withSubscription } from "@/lib/middleware";
+import { withSubscription, withPermission } from "@/lib/middleware";
 
 async function getHandler(req, { params }) {
   await dbConnect();
@@ -53,5 +53,5 @@ async function postHandler(req, { params }) {
   return NextResponse.json(annotation, { status: 201 });
 }
 
-export const GET = withSubscription(getHandler, "plan_annotations");
-export const POST = withSubscription(postHandler, "plan_annotations");
+export const GET = withSubscription(withPermission(getHandler, "annotations:view"), "plan_annotations");
+export const POST = withSubscription(withPermission(postHandler, "annotations:create"), "plan_annotations");

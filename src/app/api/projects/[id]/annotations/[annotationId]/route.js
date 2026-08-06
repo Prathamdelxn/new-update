@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Annotation from "@/models/Annotation";
-import { withSubscription } from "@/lib/middleware";
+import { withSubscription, withPermission } from "@/lib/middleware";
 
 async function patchHandler(req, { params }) {
   await dbConnect();
@@ -39,5 +39,5 @@ async function deleteHandler(req, { params }) {
   return NextResponse.json({ success: true });
 }
 
-export const PATCH = withSubscription(patchHandler, "plan_annotations");
-export const DELETE = withSubscription(deleteHandler, "plan_annotations");
+export const PATCH = withSubscription(withPermission(patchHandler, "annotations:update"), "plan_annotations");
+export const DELETE = withSubscription(withPermission(deleteHandler, "annotations:delete"), "plan_annotations");

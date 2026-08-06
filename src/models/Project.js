@@ -82,6 +82,11 @@ const ProjectSchema = new mongoose.Schema(
     siteSurveyor: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     snaggedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     handoverApprover: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    handoverRejectionReason: { type: String, trim: true },
+    clientRepName: { type: String, trim: true },
+    handoverDate: { type: Date },
+    handoverNotes: { type: String, trim: true },
+    handoverCertificateUrls: { type: [String], default: undefined },
 
     siteLocation: { type: SiteLocationSchema, default: () => ({}) },
     attendanceRadius: { type: Number, default: 100 },

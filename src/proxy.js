@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-export function middleware(request) {
+export function proxy(request) {
   // Handle preflight requests
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, {
@@ -24,7 +24,7 @@ export function middleware(request) {
   return response;
 }
 
-// Specify which routes this middleware should run on
+// Specify which routes this proxy should run on
 export const config = {
   matcher: '/api/:path*',
 };

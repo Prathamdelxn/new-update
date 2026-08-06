@@ -1,11 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
-  experimental: {
-    serverComponentsExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
-    outputFileTracingIncludes: {
-      '/api/**/*': ['./node_modules/**/*.wasm', './node_modules/@sparticuz/chromium/bin/**/*']
-    }
+  outputFileTracingIncludes: {
+    '/api/**/*': ['./node_modules/**/*.wasm', './node_modules/@sparticuz/chromium/bin/**/*']
   },
   allowedDevOrigins: ['10.183.120.72', '192.168.1.16', '192.168.1.7'],
   async headers() {

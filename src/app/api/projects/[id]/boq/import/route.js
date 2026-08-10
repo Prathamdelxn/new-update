@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import BOQ from "@/models/BOQ";
 import Project from "@/models/Project";
-import { withAuth } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 import mongoose from "mongoose";
 import * as XLSX from "xlsx";
@@ -11,7 +11,7 @@ import * as XLSX from "xlsx";
  * POST /api/projects/:id/boq/import
  * Handles Excel/CSV parsing and importing.
  */
-export const POST = withAuth(async function (req, { params }) {
+export const POST = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -99,4 +99,4 @@ export const POST = withAuth(async function (req, { params }) {
     console.error("BOQ Import error:", error);
     return NextResponse.json({ message: "Error processing import" }, { status: 500 });
   }
-});
+}, "boq:create");

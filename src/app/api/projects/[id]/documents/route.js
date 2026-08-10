@@ -2,17 +2,17 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
 import User from "@/models/User";
-import { withAuth } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 import { sendEmail } from "@/lib/email";
 import { documentUploadedEmail } from "@/lib/emailTemplates";
 
 /**
  * POST /api/projects/:id/documents
- * 
+ *
  * Adds a new document to the project's compliance documents array.
  */
-export const POST = withAuth(async function (req, { params }) {
+export const POST = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -86,4 +86,4 @@ export const POST = withAuth(async function (req, { params }) {
       { status: 500 }
     );
   }
-});
+}, "land:create");

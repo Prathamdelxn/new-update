@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
-import { withAuth } from "@/lib/middleware"; // trigger rebuild
+import { withAuth, withPermission } from "@/lib/middleware"; // trigger rebuild
 
-export const POST = withAuth(async function (req) {
+export const POST = withPermission(async function (req) {
   try {
     await dbConnect();
     const data = await req.json();
@@ -62,7 +62,7 @@ export const POST = withAuth(async function (req) {
       { status: 500 }
     );
   }
-});
+}, "projects:create");
 
 export const GET = withAuth(async function (req) {
   try {

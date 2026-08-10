@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
 import BOQ from "@/models/BOQ";
-import { withAuth } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 import RiskEngine from "@/lib/riskEngine";
 
 /**
  * PATCH /api/projects/:id/boq/:itemId
  */
-export const PATCH = withAuth(async function (req, { params }) {
+export const PATCH = withPermission(async function (req, { params }) {
   try {
     const { id, itemId } = await params;
     await dbConnect();
@@ -129,12 +129,12 @@ export const PATCH = withAuth(async function (req, { params }) {
     console.error("BOQ update error:", error);
     return NextResponse.json({ message: "Error updating BOQ" }, { status: 500 });
   }
-});
+}, "boq:update");
 
 /**
  * DELETE /api/projects/:id/boq/:itemId
  */
-export const DELETE = withAuth(async function (req, { params }) {
+export const DELETE = withPermission(async function (req, { params }) {
   try {
     const { id, itemId } = await params;
     console.log("[DELETE BOQ Item] Params received by Next.js:", { id, itemId });
@@ -164,4 +164,4 @@ export const DELETE = withAuth(async function (req, { params }) {
     console.error("BOQ delete error:", error);
     return NextResponse.json({ message: "Error deleting BOQ" }, { status: 500 });
   }
-});
+}, "boq:delete");

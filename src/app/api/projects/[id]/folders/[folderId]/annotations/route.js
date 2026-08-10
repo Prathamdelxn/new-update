@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import PlanFolder from "@/models/PlanFolder";
-import { withPermission } from "@/lib/middleware";
+import User from "@/models/User";
+import { withAuth, withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 
 // GET /api/projects/[id]/folders/[folderId]/annotations?documentId=xxx
@@ -44,11 +45,31 @@ export const GET = withPermission(async function (req, { params }) {
 
 // PATCH /api/projects/[id]/folders/[folderId]/annotations
 // Body: { documentId, annotations: [...] }
-// Replaces all annotations for the given documentId atomically
-export const PATCH = withPermission(async function (req, { params }) {
+// Replaces all annotations for the given documentId atomically.
+// This is semantically a create-or-update bulk upsert, so it accepts either
+// annotations:create or annotations:update — matching the frontend's
+// canAnnotate OR-logic, instead of blanket-requiring annotations:update.
+export const PATCH = withAuth(async function (req, { params }) {
   try {
     const { id, folderId } = await params;
     await dbConnect();
+
+    if (req.user.role !== "Admin") {
+      const userWithRole = await User.findById(req.user.id).populate("role").populate("projects.role").select("role projects");
+      let perms = userWithRole?.role?.permissions || [];
+      const has = (perm) => perms.includes("*") || perms.includes(perm);
+      if (!has("annotations:create") && !has("annotations:update")) {
+        const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === id);
+        if (projectAssignment?.role) {
+          const projPerms = projectAssignment.role.permissions || [];
+          perms = [...perms, ...projPerms];
+          if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) perms.push("*");
+        }
+      }
+      if (!has("annotations:create") && !has("annotations:update")) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
+    }
 
     const { documentId, annotations } = await req.json();
 
@@ -105,4 +126,4 @@ export const PATCH = withPermission(async function (req, { params }) {
       { status: 500 }
     );
   }
-}, "annotations:update");
+});

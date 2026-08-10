@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import PlanFolder from "@/models/PlanFolder";
 import Project from "@/models/Project";
-import { withAuth } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 
 // GET /api/projects/[id]/folders
 // Fetch all folders for a project
-export const GET = withAuth(async function (req, { params }) {
+export const GET = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -23,11 +23,11 @@ export const GET = withAuth(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error fetching plan folders" }, { status: 500 });
   }
-});
+}, "plans:view");
 
 // POST /api/projects/[id]/folders
 // Create a new folder
-export const POST = withAuth(async function (req, { params }) {
+export const POST = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -79,4 +79,4 @@ export const POST = withAuth(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error creating plan folder" }, { status: 500 });
   }
-});
+}, "plans:create");

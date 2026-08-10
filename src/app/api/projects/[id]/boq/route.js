@@ -3,15 +3,15 @@ import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
 import BOQ from "@/models/BOQ";
 import mongoose from "mongoose";
-import { withAuth } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 
 /**
  * GET /api/projects/:id/boq
- * 
+ *
  * Fetches all BOQ items for a specific project.
  */
-export const GET = withAuth(async function (req, { params }) {
+export const GET = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     console.log("asdf");
@@ -48,14 +48,14 @@ export const GET = withAuth(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error fetching BOQ" }, { status: 500 });
   }
-});
+}, "boq:view");
 
 /**
  * POST /api/projects/:id/boq
- * 
+ *
  * Adds one or more items to the project's Bill of Quantities.
  */
-export const POST = withAuth(async function (req, { params }) {
+export const POST = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -108,4 +108,4 @@ export const POST = withAuth(async function (req, { params }) {
       { status: 500 }
     );
   }
-});
+}, "boq:create");

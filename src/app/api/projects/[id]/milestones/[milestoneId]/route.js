@@ -1,11 +1,34 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Milestone from "@/models/Milestone";
-import { withPermission } from "@/lib/middleware";
+import User from "@/models/User";
+import { withAuth, withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 import RiskEngine from "@/lib/riskEngine";
 
-export const PATCH = withPermission(async function (req, { params }) {
+// Duplicated per-file, matching this codebase's convention (no shared
+// permission helpers across API route files).
+async function userHasTasksPermission(req, projectId, permission) {
+  if (req.user.role === "Admin") return true;
+  const userWithRole = await User.findById(req.user.id)
+    .populate("role")
+    .populate("projects.role")
+    .select("role projects");
+  let perms = userWithRole?.role?.permissions || [];
+  if (!perms.includes("*") && !perms.includes(permission)) {
+    const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+    if (projectAssignment?.role) {
+      const projPerms = projectAssignment.role.permissions || [];
+      perms = [...perms, ...projPerms];
+      if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) {
+        perms.push("*");
+      }
+    }
+  }
+  return perms.includes("*") || perms.includes(permission);
+}
+
+export const PATCH = withAuth(async function (req, { params }) {
   try {
     await dbConnect();
     const { id, milestoneId } = await params;
@@ -19,6 +42,62 @@ export const PATCH = withPermission(async function (req, { params }) {
 
     if (!milestone) {
       return NextResponse.json({ message: "Milestone not found" }, { status: 404 });
+    }
+
+    // This endpoint is shared by every task/milestone mutation (rename
+    // milestone, add a task, toggle complete, reassign, delete a task,
+    // change status) — the frontend always PATCHes the whole `tasks` array.
+    // Previously the whole thing was gated by a single blanket
+    // "tasks:update", so a member with only tasks:create couldn't add a
+    // task to an existing milestone, while a member with only tasks:update
+    // (and no tasks:assign/tasks:complete/tasks:delete) could freely
+    // reassign, complete, or remove tasks. Diff the incoming tasks array
+    // against what's stored and require the permission that actually
+    // matches each kind of change present in this request.
+    const neededPermissions = new Set();
+    let hasNonTaskFieldChanges = false;
+    for (const key of Object.keys(updates)) {
+      if (key !== "tasks" && updates[key] !== undefined) hasNonTaskFieldChanges = true;
+    }
+    if (hasNonTaskFieldChanges) neededPermissions.add("tasks:update");
+
+    if (updates.tasks) {
+      const existingById = new Map(milestone.tasks.map(t => [t._id.toString(), t]));
+      const incomingIds = new Set();
+
+      for (const incoming of updates.tasks) {
+        const existing = incoming._id ? existingById.get(incoming._id.toString()) : null;
+
+        if (!existing) {
+          neededPermissions.add("tasks:create");
+          if (incoming.assignedTo) neededPermissions.add("tasks:assign");
+          continue;
+        }
+        incomingIds.add(existing._id.toString());
+
+        const existingAssignee = existing.assignedTo ? existing.assignedTo.toString() : null;
+        const incomingAssignee = incoming.assignedTo ? incoming.assignedTo.toString() : null;
+        if (existingAssignee !== incomingAssignee) neededPermissions.add("tasks:assign");
+
+        if (!!incoming.isCompleted !== !!existing.isCompleted) neededPermissions.add("tasks:complete");
+
+        const otherFieldsChanged =
+          (incoming.title ?? existing.title) !== existing.title ||
+          (incoming.description ?? existing.description) !== existing.description ||
+          String(incoming.startDate ?? existing.startDate ?? "") !== String(existing.startDate ?? "") ||
+          String(incoming.endDate ?? existing.endDate ?? "") !== String(existing.endDate ?? "");
+        if (otherFieldsChanged) neededPermissions.add("tasks:update");
+      }
+
+      for (const existingId of existingById.keys()) {
+        if (!incomingIds.has(existingId)) neededPermissions.add("tasks:delete");
+      }
+    }
+
+    for (const permission of neededPermissions) {
+      if (!(await userHasTasksPermission(req, id, permission))) {
+        return NextResponse.json({ message: "Forbidden: Insufficient task permissions" }, { status: 403 });
+      }
     }
 
     // Track status change for audit log
@@ -106,7 +185,7 @@ export const PATCH = withPermission(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error updating milestone" }, { status: 500 });
   }
-}, "tasks:update");
+});
 
 export const DELETE = withPermission(async function (req, { params }) {
   try {

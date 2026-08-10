@@ -1,8 +1,36 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
+import User from "@/models/User";
 import { withAuth } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
+
+// Duplicated per-file, matching this codebase's convention (no shared
+// permission helpers across API route files). req.user (the JWT payload)
+// only ever carries {id, role, organizationId, name} — there is no
+// `permissions` array on it, so `req.user.permissions` is always undefined.
+// Any check against it silently fails for everyone except literal Admins,
+// which is why a "land:delete" holder still got 403'd. This looks the
+// permission up properly, including project-specific role overrides.
+async function userHasLandPermission(req, projectId, permission) {
+  if (req.user.role === "Admin") return true;
+  const userWithRole = await User.findById(req.user.id)
+    .populate("role")
+    .populate("projects.role")
+    .select("role projects");
+  let perms = userWithRole?.role?.permissions || [];
+  if (!perms.includes("*") && !perms.includes(permission)) {
+    const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+    if (projectAssignment?.role) {
+      const projPerms = projectAssignment.role.permissions || [];
+      perms = [...perms, ...projPerms];
+      if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) {
+        perms.push("*");
+      }
+    }
+  }
+  return perms.includes("*") || perms.includes(permission);
+}
 
 /**
  * DELETE /api/projects/:id/documents/:docId
@@ -35,9 +63,8 @@ export const DELETE = withAuth(async function (req, { params }) {
     }
 
     // Check permissions
-    const isAdmin = req.user.role === "Admin";
     const isUploader = document.uploadedBy?.user?.toString() === req.user.id;
-    const canDelete = isAdmin || isUploader || req.user.permissions?.includes("land:delete") || req.user.permissions?.includes("*");
+    const canDelete = isUploader || (await userHasLandPermission(req, id, "land:delete"));
 
     if (!canDelete) {
       return NextResponse.json({ message: "Forbidden: No deletion permission" }, { status: 403 });

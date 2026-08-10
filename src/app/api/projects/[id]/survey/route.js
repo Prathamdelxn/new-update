@@ -87,6 +87,31 @@ export const GET = withAuth(async function (req, { params }) {
     const { id: projectId } = await params;
     await dbConnect();
 
+    if (req.user.role !== "Admin") {
+      const project = await Project.findOne({ _id: projectId, organization: req.user.organizationId }).select("siteSurveyor");
+      const isAssignedSurveyor = project?.siteSurveyor && project.siteSurveyor.toString() === req.user.id;
+      if (!isAssignedSurveyor) {
+        const userWithRole = await User.findById(req.user.id)
+          .populate("role")
+          .populate("projects.role")
+          .select("role projects");
+        let perms = userWithRole?.role?.permissions || [];
+        if (!perms.includes("*") && !perms.includes("sitesurvey:view")) {
+          const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+          if (projectAssignment?.role) {
+            const projPerms = projectAssignment.role.permissions || [];
+            perms = [...perms, ...projPerms];
+            if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) {
+              perms.push("*");
+            }
+          }
+        }
+        if (!perms.includes("*") && !perms.includes("sitesurvey:view")) {
+          return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+        }
+      }
+    }
+
     const survey = await SiteSurvey.findOne({ project: projectId, organization: req.user.organizationId })
       .populate("surveyor", "name email __enc_name");
 

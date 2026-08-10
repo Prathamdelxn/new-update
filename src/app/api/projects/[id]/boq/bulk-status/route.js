@@ -2,9 +2,32 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
 import BOQ from "@/models/BOQ";
+import User from "@/models/User";
 import mongoose from "mongoose";
 import { withAuth } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
+
+// Duplicated per-file, matching this codebase's convention (no shared
+// permission helpers across API route files).
+async function userHasBOQPermission(req, projectId, permission) {
+  if (req.user.role === "Admin") return true;
+  const userWithRole = await User.findById(req.user.id)
+    .populate("role")
+    .populate("projects.role")
+    .select("role projects");
+  let perms = userWithRole?.role?.permissions || [];
+  if (!perms.includes("*") && !perms.includes(permission)) {
+    const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+    if (projectAssignment?.role) {
+      const projPerms = projectAssignment.role.permissions || [];
+      perms = [...perms, ...projPerms];
+      if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) {
+        perms.push("*");
+      }
+    }
+  }
+  return perms.includes("*") || perms.includes(permission);
+}
 
 /**
  * PATCH /api/projects/:id/boq/bulk-status
@@ -23,6 +46,14 @@ export const PATCH = withAuth(async function (req, { params }) {
 
     if (!["Approved", "Rejected", "Pending", "Draft"].includes(status)) {
       return NextResponse.json({ message: "Invalid status" }, { status: 400 });
+    }
+
+    // "Send for Approval" (status Pending + a target approver) is an assign
+    // action; actually deciding Approved/Rejected is an approve action.
+    // Previously this endpoint had no permission check at all.
+    const requiredPermission = status === "Pending" && requestedApproverId ? "boq:assign" : "boq:approve";
+    if (!(await userHasBOQPermission(req, id, requiredPermission))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient BOQ permissions" }, { status: 403 });
     }
 
     const updateData = { 

@@ -1,12 +1,35 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
-import { withAuth } from "@/lib/middleware";
+import { withAuth, withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 import Role from "@/models/Role";
 import User from "@/models/User";
 import SiteSurvey from "@/models/SiteSurvey";
 import Snag from "@/models/Snag";
+
+// Duplicated per-file, matching this codebase's convention (no shared
+// permission helpers across API route files).
+async function userHasPermission(req, projectId, permission) {
+  if (req.user.role === "Admin") return true;
+  const userWithRole = await User.findById(req.user.id)
+    .populate("role")
+    .populate("projects.role")
+    .select("role projects");
+  let perms = userWithRole?.role?.permissions || [];
+  if (!perms.includes("*") && !perms.includes(permission)) {
+    const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+    if (projectAssignment?.role) {
+      const projPerms = projectAssignment.role.permissions || [];
+      perms = [...perms, ...projPerms];
+      if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) {
+        perms.push("*");
+      }
+    }
+  }
+  return perms.includes("*") || perms.includes(permission);
+}
+
 // GET a single project
 export const GET = withAuth(async function (req, { params }) {
   try {
@@ -37,7 +60,7 @@ export const GET = withAuth(async function (req, { params }) {
 });
 
 // UPDATE a project (Full)
-export const PUT = withAuth(async function (req, { params }) {
+export const PUT = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -104,15 +127,38 @@ export const PUT = withAuth(async function (req, { params }) {
     console.error("Error updating project:", error);
     return NextResponse.json({ message: "Error updating project", error: error.message }, { status: 500 });
   }
-});
+}, "projects:update");
 
 // PARTIAL UPDATE a project
+const PROJECT_EDIT_FIELDS = [
+  "name", "description", "clientName", "clientEmail", "clientPhone",
+  "startDate", "endDate", "priority", "currency", "area", "areaUnit",
+  "needSiteSurvey", "siteLocation", "attendanceRadius", "projectType",
+];
+
 export const PATCH = withAuth(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
     const body = await req.json();
     const { auditAction, auditDetails, ...updateData } = body;
+
+    // This PATCH endpoint is shared by the real "edit project" form and many
+    // unrelated workflow status-update calls (handover approval, snag status
+    // changes, budget actions, survey assignment), each requiring different
+    // permissions — it can't be blanket-gated. Only check "projects:update"
+    // when the request actually carries project-edit fields, and separately
+    // require "sitesurvey:manage" when it's assigning a site surveyor.
+    const isProjectEdit = PROJECT_EDIT_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(updateData, f));
+    if (isProjectEdit && !(await userHasPermission(req, id, "projects:update"))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(updateData, "siteSurveyor") &&
+      !(await userHasPermission(req, id, "sitesurvey:manage"))
+    ) {
+      return NextResponse.json({ message: "Forbidden: No site survey assignment permission" }, { status: 403 });
+    }
 
     const project = await Project.findOne({ _id: id, organization: req.user.organizationId });
     if (!project) {
@@ -156,7 +202,7 @@ export const PATCH = withAuth(async function (req, { params }) {
 });
 
 // DELETE a project
-export const DELETE = withAuth(async function (req, { params }) {
+export const DELETE = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -170,4 +216,4 @@ export const DELETE = withAuth(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error deleting project" }, { status: 500 });
   }
-});
+}, "projects:delete");

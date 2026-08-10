@@ -8,6 +8,28 @@ import { emitToProject } from "@/lib/socket-server";
 import { sendEmail } from "@/lib/email";
 import { boqStatusEmail } from "@/lib/emailTemplates";
 
+// Duplicated per-file, matching this codebase's convention (no shared
+// permission helpers across API route files).
+async function userHasBOQPermission(req, projectId, permission) {
+  if (req.user.role === "Admin") return true;
+  const userWithRole = await User.findById(req.user.id)
+    .populate("role")
+    .populate("projects.role")
+    .select("role projects");
+  let perms = userWithRole?.role?.permissions || [];
+  if (!perms.includes("*") && !perms.includes(permission)) {
+    const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+    if (projectAssignment?.role) {
+      const projPerms = projectAssignment.role.permissions || [];
+      perms = [...perms, ...projPerms];
+      if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) {
+        perms.push("*");
+      }
+    }
+  }
+  return perms.includes("*") || perms.includes(permission);
+}
+
 /**
  * PATCH /api/projects/:id/boq/:itemId/status
  * Updates the approval status of a BOQ item.
@@ -23,9 +45,29 @@ export const PATCH = withAuth(async function (req, { params }) {
       return NextResponse.json({ message: "Invalid status" }, { status: 400 });
     }
 
+    // Approving/rejecting a BOQ item requires boq:approve. If this specific
+    // approval will also push a project.budgetHistory entry (v2+ item with a
+    // cost delta the caller confirmed via updateBudget), that's a financial
+    // action and additionally requires budget:approve — previously this
+    // whole endpoint had no permission check at all, so a member with
+    // neither permission could approve items AND silently move the budget.
+    if (!(await userHasBOQPermission(req, id, "boq:approve"))) {
+      return NextResponse.json({ message: "Forbidden: No BOQ approval permission" }, { status: 403 });
+    }
+
     const item = await BOQ.findOne({ _id: itemId, project: id });
     if (!item) {
       return NextResponse.json({ message: "BOQ item not found" }, { status: 404 });
+    }
+
+    if (
+      status === "Approved" &&
+      item.status !== "Approved" &&
+      item.version > 1 &&
+      updateBudget &&
+      !(await userHasBOQPermission(req, id, "budget:approve"))
+    ) {
+      return NextResponse.json({ message: "Forbidden: No budget approval permission" }, { status: 403 });
     }
 
     const oldStatus = item.status;

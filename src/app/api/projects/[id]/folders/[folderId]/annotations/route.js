@@ -23,7 +23,7 @@ export const GET = withPermission(async function (req, { params }) {
       ? folder.annotations.filter((a) => a.documentId === documentId)
       : folder.annotations;
 
-    // Shape response for frontend (keep videoUri consistent)
+    // Shape response for frontend (keep videoUri/audioUri consistent)
     const annotations = raw.map((a) => ({
       _id:          a._id,
       clientId:     a.clientId,
@@ -33,6 +33,7 @@ export const GET = withPermission(async function (req, { params }) {
       text:         a.text || "",
       imageUri:     a.imageUri || "",
       videoUri:     a.videoUri || "",
+      audioUri:     a.audioUri || "",
       createdByName: a.createdByName || "",
       createdAt:    a.createdAt,
     }));
@@ -95,6 +96,7 @@ export const PATCH = withAuth(async function (req, { params }) {
         text:         a.text || "",
         imageUri:     a.imageUri || "",
         videoUri:     a.videoUri || "",
+        audioUri:     a.audioUri || "",
         createdBy:    req.user.id,
         createdByName: req.user.name || "User",
         createdAt:    a.createdAt ? new Date(a.createdAt) : new Date(),
@@ -114,6 +116,7 @@ export const PATCH = withAuth(async function (req, { params }) {
         text:         a.text || "",
         imageUri:     a.imageUri || "",
         videoUri:     a.videoUri || "",
+        audioUri:     a.audioUri || "",
         createdByName: a.createdByName || "",
         createdAt:    a.createdAt,
       }));

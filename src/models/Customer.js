@@ -29,10 +29,11 @@ const CustomerSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "New Lead", "Contacted", "Meeting Scheduled", "Measurement Done", 
-        "Requirements Gathering", "Requirement Completed", "Design Approved", 
-        "Quotation Pending", "Quotation Sent", "Negotiation",
-        "Booking Pending", "Won", "Lost"
+        "New Lead", "Contacted", "Meeting Scheduled", "Under Site Visit", "Measurement Done", 
+        "Under Requirement", "Requirements Gathering", "Requirement Completed", 
+        "Under Drawing", "Design Approved", 
+        "Under BOQ Creation", "Under Quotation", "Quotation Pending", "Quotation Sent", "Negotiation",
+        "Booking Pending", "Won", "Converted", "Lost"
       ],
       default: "New Lead",
       index: true,
@@ -48,18 +49,43 @@ const CustomerSchema = new mongoose.Schema(
     siteVisitScheduledDate: { type: Date },
     siteMeasurements: {
       carpetArea: String,
+      roomDimensions: String,
       ceilingHeight: String,
+      floorToCeilingHeight: String,
+      doorDimensions: String,
+      windowDimensions: String,
+      wallThickness: String,
+      columnBeamDimensions: String,
+      electricalPoints: String,
+      plumbingPoints: String,
+      acLocations: String,
+      furnitureDimensions: String,
+      siteConstraints: String,
       rooms: String,
       notes: String
     },
     sitePhotos: [{ type: String }], // Array of Base64 strings (or URLs later)
     
-    // Requirement & Design Data (Phase 6)
     requirements: [
       {
         roomName: String,
         description: String,
-        theme: String
+        theme: String,
+        interiorType: String,
+        roomUsage: String,
+        furnitureRequirements: String,
+        storage: String,
+        electricalPoints: String,
+        lightingRequirements: String,
+        plumbingRequirements: String,
+        circulation: String,
+        designStyle: String,
+        colours: String,
+        materials: String,
+        flooring: String,
+        ceiling: String,
+        wallFinishes: String,
+        furnitureStyle: String,
       }
     ],
     designFiles: [
@@ -67,7 +93,31 @@ const CustomerSchema = new mongoose.Schema(
         name: String,
         url: String, // Base64 string for now
         fileType: String,
+        category: { type: String, enum: ['2D', '3D', 'Other'], default: '2D' },
         uploadedAt: { type: Date, default: Date.now }
+      }
+    ],
+
+    // Phase 6: BOQs & Detailed Quantity Estimates
+    boqs: [
+      {
+        version: Number,
+        items: [
+          {
+            serialNumber: Number,
+            category: String,
+            itemName: String,
+            description: String,
+            quantity: Number,
+            unit: String,
+            rate: Number,
+            amount: Number,
+          }
+        ],
+        totalAmount: Number,
+        status: { type: String, enum: ['draft', 'pending_approval', 'approved', 'rejected'], default: 'draft' },
+        createdAt: { type: Date, default: Date.now },
+        notes: String
       }
     ],
 

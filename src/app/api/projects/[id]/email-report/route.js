@@ -342,7 +342,7 @@ export const POST = withAuth(async function (req, { params }) {
       html: `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
           <div style="background: linear-gradient(135deg, #2563eb, #3b82f6); padding: 30px; text-align: center;">
-            <h2 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 600; letter-spacing: 0.5px;">Sky-Lite</h2>
+            <h2 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 600; letter-spacing: 0.5px;">SkyStruct Lite</h2>
           </div>
           <div style="padding: 40px 30px; background-color: #ffffff;">
             <h3 style="color: #0f172a; margin-top: 0; font-size: 22px; margin-bottom: 16px;">Your Project Report is Ready!</h3>
@@ -361,7 +361,7 @@ export const POST = withAuth(async function (req, { params }) {
           </div>
           <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Sky-Lite Project Management. All rights reserved.
+              &copy; ${new Date().getFullYear()} SkyStruct Lite Project Management. All rights reserved.
             </p>
           </div>
         </div>

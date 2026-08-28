@@ -21,6 +21,18 @@ const VendorSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    gstNumber: {
+      type: String,
+      trim: true,
+    },
+    address: {
+      type: String,
+      trim: true,
+    },
+    vendorCategory: {
+      type: String,
+      trim: true,
+    },
     organization: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Organization",

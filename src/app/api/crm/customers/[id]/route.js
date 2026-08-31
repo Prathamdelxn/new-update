@@ -13,15 +13,20 @@ export const PATCH = withAuth(async function (req, { params }) {
     const { id } = await params;
     const data = await req.json();
 
+    const existing = await Customer.findOne({ _id: id, organization: req.user.organizationId });
+    if (!existing) {
+      return NextResponse.json({ message: "Customer not found" }, { status: 404 });
+    }
+
+    if (existing.status === "Won" || existing.status === "Converted" || existing.linkedProject) {
+      return NextResponse.json({ message: "This lead has been converted to an active project and is locked from modification." }, { status: 400 });
+    }
+
     const customer = await Customer.findOneAndUpdate(
       { _id: id, organization: req.user.organizationId },
       { $set: data },
       { new: true }
     );
-
-    if (!customer) {
-      return NextResponse.json({ message: "Customer not found" }, { status: 404 });
-    }
 
     // If status was changed, log an activity automatically
     if (data.status) {

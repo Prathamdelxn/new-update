@@ -7,6 +7,8 @@ import Role from "@/models/Role";
 import User from "@/models/User";
 import SiteSurvey from "@/models/SiteSurvey";
 import Snag from "@/models/Snag";
+import Customer from "@/models/Customer";
+import Activity from "@/models/Activity";
 
 // Duplicated per-file, matching this codebase's convention (no shared
 // permission helpers across API route files).
@@ -212,7 +214,45 @@ export const DELETE = withPermission(async function (req, { params }) {
       return NextResponse.json({ message: "Project not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ message: "Project deleted successfully" });
+    // Unlock any CRM Lead / Customer linked to this project
+    const linkedCustomers = await Customer.find({
+      organization: req.user.organizationId,
+      linkedProject: id,
+    });
+
+    for (const customer of linkedCustomers) {
+      customer.linkedProject = undefined;
+      // Revert status to pre-conversion
+      if (customer.status === 'Won' || customer.status === 'Converted') {
+        const hasAcceptedQuote = customer.quotations?.some((q) => q.status === 'Accepted');
+        customer.status = hasAcceptedQuote
+          ? 'Booking Pending'
+          : (customer.quotations && customer.quotations.length > 0
+            ? 'Under Quotation'
+            : (customer.boqs && customer.boqs.length > 0
+              ? 'Under BOQ Creation'
+              : (customer.designFiles && customer.designFiles.length > 0
+                ? 'Under Drawing'
+                : 'Under Requirement')));
+      }
+      await customer.save();
+
+      // Log Activity
+      try {
+        await Activity.create({
+          organization: req.user.organizationId,
+          customer: customer._id,
+          user: req.user.id,
+          type: 'Status Change',
+          status: 'Completed',
+          remarks: `Linked Project "${project.name}" was deleted. Lead is now unlocked for editing.`,
+        });
+      } catch (actErr) {
+        console.warn('Failed to log Activity on project delete:', actErr);
+      }
+    }
+
+    return NextResponse.json({ message: "Project deleted successfully and linked lead unlocked" });
   } catch (error) {
     return NextResponse.json({ message: "Error deleting project" }, { status: 500 });
   }

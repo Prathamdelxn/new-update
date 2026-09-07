@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
+import Template from "@/models/Template";
+import TemplateCategory from "@/models/TemplateCategory";
 import { withAuth, withPermission } from "@/lib/middleware"; // trigger rebuild
 
 export const POST = withPermission(async function (req) {
@@ -69,6 +71,12 @@ export const GET = withAuth(async function (req) {
     await dbConnect();
 
     const projects = await Project.find({ organization: req.user.organizationId })
+      .populate('category', 'name')
+      .populate({
+        path: 'templateId',
+        select: 'name category',
+        populate: { path: 'category', select: 'name' }
+      })
       .populate('customer', 'name email mobileNumber propertyType')
       .populate('assignedTo', 'name')
       .sort({ createdAt: -1 });

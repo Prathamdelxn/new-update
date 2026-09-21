@@ -15,7 +15,7 @@ export const PUT = withAuth(async function (req, { params }) {
       return NextResponse.json({ message: "Vendor not found" }, { status: 404 });
     }
 
-    const updatedVendor = await Vendor.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
+    const updatedVendor = await Vendor.findByIdAndUpdate(id, updateData, { returnDocument: 'after', runValidators: true });
 
     return NextResponse.json(updatedVendor);
   } catch (error) {

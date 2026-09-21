@@ -28,7 +28,7 @@ export const PATCH = withAuth(async function (req, { params }) {
       updateData.history = existingRisk.history;
     }
 
-    const updatedRisk = await Risk.findByIdAndUpdate(id, updateData, { new: true });
+    const updatedRisk = await Risk.findByIdAndUpdate(id, updateData, { returnDocument: 'after' });
 
     // Record internal audit log
     if (body.status) {

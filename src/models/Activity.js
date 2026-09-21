@@ -7,7 +7,7 @@ const ActivitySchema = new mongoose.Schema(
     
     type: { 
       type: String, 
-      enum: ["Phone Call", "WhatsApp", "Meeting", "Office Visit", "Site Visit", "Email", "Status Change", "System Update", "Requirement Gathering", "Design Shared"],
+      enum: ["Phone Call", "WhatsApp", "Meeting", "Office Visit", "Site Visit", "Site Survey", "Email", "Status Change", "System Update", "Requirement Gathering", "2D/3D Drawing", "Design Shared"],
       required: true
     },
     

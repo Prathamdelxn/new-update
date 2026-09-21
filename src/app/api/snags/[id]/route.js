@@ -54,7 +54,7 @@ export const PATCH = withAuth(async function (req, { params }) {
           }
         }
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     // Record audit trail in project

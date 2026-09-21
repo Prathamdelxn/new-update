@@ -28,7 +28,7 @@ export const PATCH = withAuth(async function (req, { params }) {
     const customer = await Customer.findOneAndUpdate(
       { _id: id, organization: req.user.organizationId },
       { $set: updateData },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     // If status was changed, log an activity automatically

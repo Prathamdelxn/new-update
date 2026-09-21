@@ -25,7 +25,7 @@ export const PUT = withAuth(async function (req, { params }) {
     const updatedLabour = await Labour.findOneAndUpdate(
       { _id: id, organization: req.user.organizationId },
       { $set: updateData },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedLabour) {

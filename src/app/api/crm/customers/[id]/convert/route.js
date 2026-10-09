@@ -6,8 +6,10 @@ import Project from '@/models/Project';
 
 export const POST = withAuth(async function(req, { params }) {
   try {
-    const { id } = params;
-    const { startDate, remarks } = await req.json();
+    const resolvedParams = await params;
+    const id = resolvedParams.id;
+    const body = await req.json();
+    const { startDate, remarks, quotationIndex } = body || {};
 
     await dbConnect();
 
@@ -25,8 +27,6 @@ export const POST = withAuth(async function(req, { params }) {
     if (customer.status === 'Won') {
       return NextResponse.json({ success: false, message: 'Customer is already converted to a Project' }, { status: 400 });
     }
-
-    const { startDate, remarks, quotationIndex } = body;
 
     // Determine accepted quotation (use quotationIndex if passed, or find Accepted/Approved, or fallback to latest)
     let acceptedQuotation = null;

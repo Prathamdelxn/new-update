@@ -17,21 +17,21 @@ export const GET = withAuth(async function (req) {
     const permission = searchParams.get("permission");
 
     const query = { organization: req.user.organizationId };
-    
+
     let users = await User.find(query)
       .populate("role", "name permissions")
       .populate("projects.project", "name")
       .populate("projects.role", "name permissions")
       .select("-password");
-  
+
     // Filter logic: Include if (in project) OR (is Admin with '*' perm)
     if (projectId) {
-      users = users.filter(u => 
+      users = users.filter(u =>
         (u.projects && u.projects.some(p => p.project && p.project._id.toString() === projectId)) ||
         (u.role && u.role.permissions.includes("*"))
       );
     }
- 
+
     // Secondary filter by specific permission if requested
     if (permission) {
       users = users.filter(u => {
@@ -43,18 +43,18 @@ export const GET = withAuth(async function (req) {
         if (projectId && u.projects) {
           const userProject = u.projects.find(p => p.project && p.project._id.toString() === projectId);
           if (userProject && userProject.role) {
-             const projRole = userProject.role;
-             const hasPerm = projRole.permissions && (projRole.permissions.includes("*") || projRole.permissions.some(p => p.startsWith(`${permission}:`)) || projRole.permissions.includes(permission));
-             console.log(`Checking project role permissions for user ${u.email}:`, projRole.permissions, `hasPerm:`, hasPerm);
-             if (hasPerm) {
-                 return true;
-             }
+            const projRole = userProject.role;
+            const hasPerm = projRole.permissions && (projRole.permissions.includes("*") || projRole.permissions.some(p => p.startsWith(`${permission}:`)) || projRole.permissions.includes(permission));
+            console.log(`Checking project role permissions for user ${u.email}:`, projRole.permissions, `hasPerm:`, hasPerm);
+            if (hasPerm) {
+              return true;
+            }
           }
         }
         return false;
       });
     }
-     
+
 
     return NextResponse.json(users);
   } catch (error) {
@@ -133,7 +133,7 @@ export const POST = withRole(async function (req) {
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("Onboarding error:", error);
-    
+
     // Check if it's a Mongoose validation error
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map(err => err.message);

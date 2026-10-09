@@ -61,8 +61,8 @@ export async function POST(req) {
           organizationId: user.organization?._id
             ? user.organization._id.toString()
             : typeof user.organization === 'string' && user.organization.length === 24
-            ? user.organization
-            : undefined,
+              ? user.organization
+              : undefined,
           organization: user.organization,
           industryType: user.organization?.industryType || "construction",
         },

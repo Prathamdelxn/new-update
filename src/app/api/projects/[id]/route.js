@@ -135,7 +135,7 @@ export const PUT = withPermission(async function (req, { params }) {
 const PROJECT_EDIT_FIELDS = [
   "name", "description", "clientName", "clientEmail", "clientPhone",
   "startDate", "endDate", "priority", "currency", "area", "areaUnit",
-  "needSiteSurvey", "siteLocation", "attendanceRadius", "projectType",
+  "needSiteSurvey", "siteLocation", "attendanceRadius", "projectType", "budget",
 ];
 
 export const PATCH = withAuth(async function (req, { params }) {
@@ -170,7 +170,30 @@ export const PATCH = withAuth(async function (req, { params }) {
     // Apply partial updates
     Object.keys(updateData).forEach(key => {
       if (updateData[key] !== undefined) {
-        project[key] = updateData[key];
+        if (key === 'budget') {
+          const numB = Number(updateData[key]);
+          if (!isNaN(numB)) {
+            project.budget = numB;
+            if (!project.budgetHistory) {
+              project.budgetHistory = [];
+            }
+            const lastHistory = project.budgetHistory.length > 0
+              ? project.budgetHistory[project.budgetHistory.length - 1]
+              : null;
+            if (!lastHistory || lastHistory.amount !== numB) {
+              project.budgetHistory.push({
+                amount: numB,
+                reason: "Budget updated via project details edit",
+                approvalStatus: "Approved",
+                updatedBy: req.user.id,
+                updatedByName: req.user.name || "User",
+                timestamp: new Date()
+              });
+            }
+          }
+        } else {
+          project[key] = updateData[key];
+        }
       }
     });
 

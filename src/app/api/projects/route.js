@@ -34,6 +34,16 @@ export const POST = withPermission(async function (req) {
       return NextResponse.json({ message: "Project name is required" }, { status: 400 });
     }
 
+    const numBudget = budget ? Number(budget) : undefined;
+    const initialBudgetHistory = numBudget ? [{
+      amount: numBudget,
+      reason: "Initial Base Budget",
+      approvalStatus: "Approved",
+      updatedBy: req.user.id || createdBy,
+      updatedByName: req.user.name || "System",
+      timestamp: new Date()
+    }] : [];
+
     const project = await Project.create({
       name,
       description,
@@ -43,7 +53,8 @@ export const POST = withPermission(async function (req) {
       endDate,
       needSiteSurvey,
       projectType,
-      budget,
+      budget: numBudget,
+      budgetHistory: initialBudgetHistory,
       currency,
       areaUnit,
       area,

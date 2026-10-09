@@ -18,10 +18,10 @@ export const GET = withAuth(async function (req) {
     const orgId = typeof rawOrgId === 'object' && rawOrgId?._id
       ? rawOrgId._id.toString()
       : typeof rawOrgId === 'string' && rawOrgId.length === 24
-      ? rawOrgId
-      : typeof rawOrgId === 'string'
-      ? (rawOrgId.match(/([a-f0-9]{24})/i)?.[1] || rawOrgId)
-      : rawOrgId;
+        ? rawOrgId
+        : typeof rawOrgId === 'string'
+          ? (rawOrgId.match(/([a-f0-9]{24})/i)?.[1] || rawOrgId)
+          : rawOrgId;
 
     if (!orgId) {
       return NextResponse.json({
@@ -30,7 +30,7 @@ export const GET = withAuth(async function (req) {
         stages: [],
         milestones: [],
         averageStageProgress: 0,
-        velocity: { dailyActual: [0,0,0,0,0,0,0], dailyPlanned: [0,0,0,0,0,0,0] },
+        velocity: { dailyActual: [0, 0, 0, 0, 0, 0, 0], dailyPlanned: [0, 0, 0, 0, 0, 0, 0] },
         trajectory: { all: [], month: [], week: [] },
         dailyActivityBars: [],
         monthlyTradeAllocations: [],
@@ -277,7 +277,7 @@ export const GET = withAuth(async function (req) {
         if (s.status === "Resolved" || s.status === "Closed") resolvedSnags++;
         else openSnags++;
       });
-    } catch (_) {}
+    } catch (_) { }
 
     let openIssues = 0;
     try {
@@ -285,7 +285,7 @@ export const GET = withAuth(async function (req) {
       issues.forEach((i) => {
         if (i.status === "Open" || i.status === "Escalated" || i.status === "In Progress") openIssues++;
       });
-    } catch (_) {}
+    } catch (_) { }
 
     // 5. Stage Progress Percentages
     const calcStagePct = (stg, fallback) => {
@@ -372,8 +372,8 @@ export const GET = withAuth(async function (req) {
       const pct = m.status === 'Completed'
         ? 100
         : mTasks.length > 0
-        ? Math.round((compTasks / mTasks.length) * 100)
-        : (m.status === 'In Progress' ? 50 : 0);
+          ? Math.round((compTasks / mTasks.length) * 100)
+          : (m.status === 'In Progress' ? 50 : 0);
       const projName = projectNameMap.get(m.project?.toString()) || "Project";
       return {
         _id: m._id,

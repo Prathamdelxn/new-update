@@ -29,7 +29,7 @@ export const PATCH = withRole(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
-    
+
     const { name, permissions, description } = await req.json();
 
     const role = await Role.findOne({ _id: id, organization: req.user.organizationId });
@@ -39,7 +39,7 @@ export const PATCH = withRole(async function (req, { params }) {
 
     // Protection: Block editing of core system Admin role
     if (role.name === "Admin" || role.isSystemRole) {
-       return NextResponse.json({ message: "Forbidden: System roles cannot be modified" }, { status: 403 });
+      return NextResponse.json({ message: "Forbidden: System roles cannot be modified" }, { status: 403 });
     }
 
     // Update fields
@@ -91,8 +91,8 @@ export const DELETE = withRole(async function (req, { params }) {
     // Delete the role itself
     await Role.findByIdAndDelete(id);
 
-    return NextResponse.json({ 
-      message: `Role and ${deletedUsers.deletedCount} members removed successfully` 
+    return NextResponse.json({
+      message: `Role and ${deletedUsers.deletedCount} members removed successfully`
     });
   } catch (error) {
     return NextResponse.json({ message: "Error removing role" }, { status: 500 });

@@ -201,13 +201,25 @@ export const PATCH = withAuth(async function (req, { params }) {
 
       const approvers = await User.find({ _id: { $in: approverIds } })
         .populate("role", "name")
-        .select("name role");
+        .select("+__enc_name +__enc_phoneNumber name email role");
+
+      const cleanName = (u) => {
+        let n = u.name;
+        if (!n || typeof n !== "string" || n.includes(':') || /^[a-f0-9]{24}$/i.test(n.trim())) {
+          n = u.email?.split('@')[0] || u.role?.name || "Admin";
+        }
+        n = n ? n.trim() : "Admin";
+        if (n.includes('.')) {
+          n = n.split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+        }
+        return n;
+      };
 
       version.approvalStatus = "Pending";
       version.approvalNote = "";
       version.approvals = approvers.map((u) => ({
         user: u._id,
-        userName: u.name,
+        userName: cleanName(u),
         userRole: u.role?.name || "Member",
         status: "Pending",
         note: "",
@@ -223,7 +235,7 @@ export const PATCH = withAuth(async function (req, { params }) {
           userName: req.user.name || "User",
           userRole: req.user.role || "Member",
           action: "Update",
-          details: `Plan '${planEntry.name}' (v${version.versionNumber}) sent for approval to ${approvers.map((u) => u.name).join(", ")}`,
+          details: `Plan '${planEntry.name}' (v${version.versionNumber}) sent for approval to ${approvers.map((u) => cleanName(u)).join(", ")}`,
         });
         await project.save();
       }
@@ -243,25 +255,54 @@ export const PATCH = withAuth(async function (req, { params }) {
         return NextResponse.json({ message: "You don't have permission to approve or reject plans" }, { status: 403 });
       }
 
-      const entry = version.approvals.find((a) => a.user.toString() === req.user.id);
-      if (!entry) {
+      const respondingUser = await User.findById(req.user.id).populate("role", "name").select("+__enc_name +__enc_phoneNumber name email role");
+      let responderName = respondingUser?.name || req.user.name;
+      if (!responderName || typeof responderName !== "string" || responderName.includes(':') || /^[a-f0-9]{24}$/i.test(responderName.trim())) {
+        responderName = respondingUser?.email?.split('@')[0] || req.user.role || "Admin";
+      }
+      responderName = responderName ? responderName.trim() : "Admin";
+      if (responderName.includes('.')) {
+        responderName = responderName.split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+      }
+
+      let entry = version.approvals.find((a) => a.user?.toString() === req.user.id);
+      if (!entry && isAdmin) {
+        entry = {
+          user: req.user.id,
+          userName: responderName,
+          userRole: req.user.role || "Admin",
+          status: response,
+          note: note || "",
+          respondedAt: new Date()
+        };
+        version.approvals.push(entry);
+      } else if (!entry) {
         return NextResponse.json({ message: "You are not an assigned approver for this version" }, { status: 403 });
       }
-      if (entry.status !== "Pending") {
+
+      if (entry.status !== "Pending" && !isAdmin) {
         return NextResponse.json({ message: "You have already responded to this version" }, { status: 400 });
       }
 
       entry.status = response;
       entry.note = note || "";
       entry.respondedAt = new Date();
+      entry.userName = responderName;
+      entry.userRole = respondingUser?.role?.name || req.user.role || "Admin";
 
       if (response === "Rejected") {
         version.approvalStatus = "Rejected";
         version.approvalNote = note || "";
+        version.rejectedBy = req.user.id;
+        version.rejectedByName = responderName;
+        version.rejectedAt = new Date();
       } else {
         const allApproved = version.approvals.every((a) => a.status === "Approved");
         if (allApproved) {
           version.approvalStatus = "Approved";
+          version.approvedBy = req.user.id;
+          version.approvedByName = responderName;
+          version.approvedAt = new Date();
         }
       }
 

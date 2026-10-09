@@ -32,11 +32,11 @@ export const GET = withAuth(async function (req, { params }) {
     }
 
     // 2. Also get the project to collect its members array (verify organization)
-    const project = await Project.findOne({ 
-      _id: id, 
-      organization: req.user.organizationId 
+    const project = await Project.findOne({
+      _id: id,
+      organization: req.user.organizationId
     }).select("members");
-    
+
     if (!project) {
       return NextResponse.json({ message: "Project not found" }, { status: 404 });
     }

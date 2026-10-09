@@ -12,7 +12,7 @@ export const PATCH = withRole(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
-    
+
     const { name, email, phoneNumber, roleId, projectIds, projects, status } = await req.json();
 
     const user = await User.findOne({ _id: id, organization: req.user.organizationId });
@@ -93,7 +93,7 @@ export const DELETE = withRole(async function (req, { params }) {
     // Capture logout/removal event for audit logging if needed
     // Since we are deleting, we could record this in a dedicated AuditLog collection,
     // but for now we'll just proceed with removal.
-    
+
     await User.findByIdAndDelete(id);
 
     return NextResponse.json({ message: "Member removed successfully" });

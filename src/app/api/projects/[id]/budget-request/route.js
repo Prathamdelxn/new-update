@@ -13,21 +13,34 @@ export const POST = withAuth(async function (req, { params }) {
     const { id: projectId } = await params;
     await dbConnect();
 
-    const { approverId } = await req.json();
+    const body = await req.json();
+    const { approverId, amount, reason } = body || {};
 
     const project = await Project.findOne({ _id: projectId, organization: req.user.organizationId });
-    const survey = await SiteSurvey.findOne({ project: projectId, organization: req.user.organizationId });
-
-    if (!project || !survey) {
-      return NextResponse.json({ message: "Project or Survey not found" }, { status: 404 });
+    if (!project) {
+      return NextResponse.json({ message: "Project not found" }, { status: 404 });
     }
 
-    if (!survey.affectsBudget || !survey.recommendedBudget) {
-      return NextResponse.json({ message: "Survey does not affect budget" }, { status: 400 });
-    }
+    let requestAmount = amount !== undefined && amount !== null && amount !== "" ? Number(amount) : null;
+    let requestReason = reason ? String(reason).trim() : "";
+    let isSurveyRequest = false;
+    let survey = null;
 
-    if (survey.budgetRequestSent) {
-      return NextResponse.json({ message: "Budget request already sent" }, { status: 400 });
+    if (requestAmount === null || isNaN(requestAmount)) {
+      // Fallback to survey if amount was not directly provided
+      survey = await SiteSurvey.findOne({ project: projectId, organization: req.user.organizationId });
+      if (!survey) {
+        return NextResponse.json({ message: "Survey or amount not provided" }, { status: 400 });
+      }
+      if (!survey.affectsBudget || !survey.recommendedBudget) {
+        return NextResponse.json({ message: "Survey does not affect budget" }, { status: 400 });
+      }
+      if (survey.budgetRequestSent) {
+        return NextResponse.json({ message: "Budget request already sent" }, { status: 400 });
+      }
+      requestAmount = Number(survey.recommendedBudget);
+      requestReason = survey.budgetReason || "Survey recommended budget adjustment";
+      isSurveyRequest = true;
     }
 
     let approverName = "Approver";
@@ -36,10 +49,14 @@ export const POST = withAuth(async function (req, { params }) {
       if (approver) approverName = approver.name;
     }
 
+    const formattedReason = approverId
+      ? `${isSurveyRequest ? 'Survey Validation Request' : 'Budget Change Request'} sent to ${approverName}: ${requestReason}`
+      : requestReason || "Budget Change Request";
+
     // Add pending request to budget history
     project.budgetHistory.push({
-      amount: Number(survey.recommendedBudget),
-      reason: `Survey Validation Request sent to ${approverName}: ` + survey.budgetReason,
+      amount: requestAmount,
+      reason: formattedReason,
       approvalStatus: "Pending",
       updatedBy: req.user.id,
       updatedByName: req.user.name || "System",
@@ -51,13 +68,15 @@ export const POST = withAuth(async function (req, { params }) {
       userName: req.user.name || "System",
       userRole: req.user.role || "Member",
       action: "Update",
-      details: `Requested budget change of $${survey.recommendedBudget} for Site Survey. Sent to: ${approverName}`,
+      details: `Requested budget change of $${requestAmount}. Reason: ${requestReason}${approverId ? `. Sent to: ${approverName}` : ''}`,
     });
 
-    survey.budgetRequestSent = true;
+    if (isSurveyRequest && survey) {
+      survey.budgetRequestSent = true;
+      await survey.save();
+    }
 
     await project.save();
-    await survey.save();
 
     // Email the approver about the pending request
     if (approverId) {

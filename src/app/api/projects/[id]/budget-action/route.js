@@ -24,19 +24,25 @@ export const PATCH = withAuth(async function (req, { params }) {
       return NextResponse.json({ message: "Invalid action" }, { status: 400 });
     }
 
-    // 1. Check if user has permission to approve budget
-    const userWithRole = await User.findById(req.user.id).populate("role");
-    const userRole = userWithRole?.role;
-    const hasPermission = userRole?.permissions?.includes("budget:approve") || userRole?.permissions?.includes("*");
-
-    if (!hasPermission) {
-      return NextResponse.json({ message: "Forbidden: No budget approval permission" }, { status: 403 });
-    }
-
-    // 2. Find the project and update the budget item
-    const project = await Project.findOne({ _id: projectId, organization: req.user.organizationId });
+    // 1. Find the project and check permissions
+    const project = await Project.findOne({ _id: projectId, organization: req.user.organizationId }).populate("members.role");
     if (!project) {
       return NextResponse.json({ message: "Project not found" }, { status: 404 });
+    }
+
+    const userWithRole = await User.findById(req.user.id).populate("role");
+    const userRole = userWithRole?.role;
+    const isGlobalAdminOrApproved = userRole?.name === "Admin" || userRole?.permissions?.includes("budget:approve") || userRole?.permissions?.includes("*");
+
+    const member = project.members?.find((m) => {
+      const mId = m.user?._id ? m.user._id.toString() : m.user?.toString();
+      return mId === req.user.id;
+    });
+    const memberRole = member?.role;
+    const hasMemberPermission = memberRole?.name === "Admin" || memberRole?.permissions?.includes("budget:approve") || memberRole?.permissions?.includes("*");
+
+    if (!isGlobalAdminOrApproved && !hasMemberPermission) {
+      return NextResponse.json({ message: "Forbidden: No budget approval permission" }, { status: 403 });
     }
 
     const budgetItem = project.budgetHistory.id(budgetId);

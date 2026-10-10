@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
 import User from "@/models/User";
-import { withAuth } from "@/lib/middleware";
+import { withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 
 // Add a member to a project
-export const POST = withAuth(async function (req, { params }) {
+export const POST = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -65,4 +65,4 @@ export const POST = withAuth(async function (req, { params }) {
     console.error("Error adding project member:", error);
     return NextResponse.json({ message: "Error adding member" }, { status: 500 });
   }
-});
+}, "projects:assign");

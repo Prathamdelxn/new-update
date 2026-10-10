@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import EscalationMatrix from "@/models/EscalationMatrix";
 import { withAuth } from "@/lib/middleware";
+import { userHasProjectPermission } from "@/lib/permissions";
 import { emitToProject } from "@/lib/socket-server";
 
 export const GET = withAuth(async function (req, { params }) {
@@ -34,6 +35,11 @@ export const GET = withAuth(async function (req, { params }) {
 export const POST = withAuth(async function (req, { params }) {
   try {
     const { id } = await params;
+
+    // The escalation matrix belongs to Snag Management; editing it needs Update
+    if (!(await userHasProjectPermission(req, id, "snags:update"))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
     const body = await req.json();
     await dbConnect();
 

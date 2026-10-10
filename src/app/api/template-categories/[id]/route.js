@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import TemplateCategory from "@/models/TemplateCategory";
 import Template from "@/models/Template";
-import { withRole } from "@/lib/middleware";
+import { withAnyRolePermission } from "@/lib/middleware";
 
 /**
  * PATCH: Update template category
  */
-export const PATCH = withRole(async function (req, { params }) {
+export const PATCH = withAnyRolePermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -38,12 +38,12 @@ export const PATCH = withRole(async function (req, { params }) {
       { status: 500 }
     );
   }
-}, ["Admin"]);
+}, "category:update");
 
 /**
  * DELETE: Remove template category
  */
-export const DELETE = withRole(async function (req, { params }) {
+export const DELETE = withAnyRolePermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -63,4 +63,4 @@ export const DELETE = withRole(async function (req, { params }) {
       { status: 500 }
     );
   }
-}, ["Admin"]);
+}, "category:delete");

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import User from "@/models/User";
-import { withAuth, withRole } from "@/lib/middleware";
+import { withAuth, withPermission } from "@/lib/middleware";
+import { payloadAssignsPrivilegedRole, hasPermission } from "@/lib/permissions";
 import { sendEmail } from "@/lib/email";
 import { welcomeEmail } from "@/lib/emailTemplates";
 import Role from "@/models/Role";
@@ -36,7 +37,7 @@ export const GET = withAuth(async function (req) {
     if (permission) {
       users = users.filter(u => {
         // Global admin check
-        if (u.role && (u.role.permissions.includes("*") || u.role.permissions.some(p => p.startsWith(`${permission}:`)) || u.role.permissions.includes(permission))) {
+        if (u.role && (hasPermission(u.role.permissions, permission) || u.role.permissions.some(p => p.startsWith(`${permission}:`)))) {
           return true;
         }
         // Project role check
@@ -44,7 +45,7 @@ export const GET = withAuth(async function (req) {
           const userProject = u.projects.find(p => p.project && p.project._id.toString() === projectId);
           if (userProject && userProject.role) {
             const projRole = userProject.role;
-            const hasPerm = projRole.permissions && (projRole.permissions.includes("*") || projRole.permissions.some(p => p.startsWith(`${permission}:`)) || projRole.permissions.includes(permission));
+            const hasPerm = projRole.permissions && (hasPermission(projRole.permissions, permission) || projRole.permissions.some(p => p.startsWith(`${permission}:`)));
             console.log(`Checking project role permissions for user ${u.email}:`, projRole.permissions, `hasPerm:`, hasPerm);
             if (hasPerm) {
               return true;
@@ -69,10 +70,15 @@ export const GET = withAuth(async function (req) {
 /**
  * POST: Onboard a new team member
  */
-export const POST = withRole(async function (req) {
+export const POST = withPermission(async function (req) {
   try {
     await dbConnect();
     const { name, email, phoneNumber, roleId, projectIds, projects, password } = await req.json();
+
+    // Only Admins may hand out Admin-level roles
+    if (req.user.role !== "Admin" && (await payloadAssignsPrivilegedRole({ roleId, projects }, req.user.organizationId))) {
+      return NextResponse.json({ message: "Forbidden: Only an Admin can assign an Admin-level role" }, { status: 403 });
+    }
 
     // Check if user already exists with email
     const existingEmail = await User.findOne({ email });
@@ -148,4 +154,4 @@ export const POST = withRole(async function (req) {
       { status: 500 }
     );
   }
-}, ["Admin"]);
+}, "users:create");

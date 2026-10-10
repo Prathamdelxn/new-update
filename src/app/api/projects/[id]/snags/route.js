@@ -5,6 +5,7 @@ import Project from "@/models/Project";
 import User from "@/models/User";
 import { withAuth } from "@/lib/middleware";
 import { recordAudit } from "@/lib/auditHelper";
+import { userHasProjectPermission, snagChangePermissions } from "@/lib/permissions";
 import { sendEmail } from "@/lib/email";
 import { snagAssignedEmail } from "@/lib/emailTemplates";
 import { emitToProject } from "@/lib/socket-server";
@@ -33,6 +34,13 @@ export const POST = withAuth(async function (req, { params }) {
     const body = await req.json();
     
     await dbConnect();
+
+    // Creating needs Create; setting an assignee straight away also needs Assign
+    for (const permission of ["snags:create", ...(body.assignedTo ? ["snags:assign"] : [])]) {
+      if (!(await userHasProjectPermission(req, id, permission))) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
+    }
 
     const newSnag = await Snag.create({
       ...body,

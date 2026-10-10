@@ -5,6 +5,7 @@ import Project from "@/models/Project";
 import User from "@/models/User";
 import { withAuth } from "@/lib/middleware";
 import { recordAudit } from "@/lib/auditHelper";
+import { userHasProjectPermission, snagChangePermissions } from "@/lib/permissions";
 import { sendEmail } from "@/lib/email";
 import { snagAssignedEmail, snagStatusEmail } from "@/lib/emailTemplates";
 
@@ -38,6 +39,14 @@ export const PATCH = withAuth(async function (req, { params }) {
     const snag = await Snag.findOne({ _id: id, organization: req.user.organizationId });
     if (!snag) {
       return NextResponse.json({ message: "Snag not found" }, { status: 404 });
+    }
+
+    // Snags & Issues: assign / complete / update each need their own permission
+
+    for (const permission of snagChangePermissions(body, snag)) {
+      if (!(await userHasProjectPermission(req, snag.project, permission))) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
     }
 
     // Update snag
@@ -88,6 +97,12 @@ export const DELETE = withAuth(async function (req, { params }) {
     const snag = await Snag.findOne({ _id: id, organization: req.user.organizationId });
     if (!snag) {
       return NextResponse.json({ message: "Snag not found" }, { status: 404 });
+    }
+
+    for (const permission of ["snags:delete"]) {
+      if (!(await userHasProjectPermission(req, snag.project, permission))) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
     }
 
     await Snag.findByIdAndDelete(id);

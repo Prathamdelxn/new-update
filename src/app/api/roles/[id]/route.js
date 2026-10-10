@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Role from "@/models/Role";
-import { withAuth, withRole } from "@/lib/middleware";
+import { withAuth, withPermission } from "@/lib/middleware";
 
 /**
  * GET: Fetch a single role
@@ -25,7 +25,7 @@ import User from "@/models/User";
 /**
  * PATCH: Update role permissions/details
  */
-export const PATCH = withRole(async function (req, { params }) {
+export const PATCH = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -40,6 +40,11 @@ export const PATCH = withRole(async function (req, { params }) {
     // Protection: Block editing of core system Admin role
     if (role.name === "Admin" || role.isSystemRole) {
       return NextResponse.json({ message: "Forbidden: System roles cannot be modified" }, { status: 403 });
+    }
+
+    // Only Admins may grant full access ("*")
+    if (req.user.role !== "Admin" && Array.isArray(permissions) && permissions.includes("*")) {
+      return NextResponse.json({ message: "Forbidden: Only an Admin can grant full access" }, { status: 403 });
     }
 
     // Update fields
@@ -65,12 +70,12 @@ export const PATCH = withRole(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error updating role" }, { status: 500 });
   }
-}, ["Admin"]);
+}, "users:update");
 
 /**
  * DELETE: Remove role and all associated members (Cascade)
  */
-export const DELETE = withRole(async function (req, { params }) {
+export const DELETE = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -97,4 +102,4 @@ export const DELETE = withRole(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error removing role" }, { status: 500 });
   }
-}, ["Admin"]);
+}, "users:delete");

@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import TemplateCategory from "@/models/TemplateCategory";
-import { withAuth, withRole } from "@/lib/middleware";
+import { withAuth, withAnyRolePermission } from "@/lib/middleware";
 
 /**
  * GET: Fetch all template categories
@@ -22,7 +22,7 @@ export const GET = withAuth(async function (req) {
 /**
  * POST: Create a new template category
  */
-export const POST = withRole(async function (req) {
+export const POST = withAnyRolePermission(async function (req) {
   try {
     await dbConnect();
     const { name } = await req.json();
@@ -62,4 +62,4 @@ export const POST = withRole(async function (req) {
       { status: 500 }
     );
   }
-}, ["Admin"]);
+}, "category:create");

@@ -16,6 +16,12 @@ export const DELETE = withAuth(async function (req, { params }) {
       organization: req.user.organizationId,
     });
     if (!log) return NextResponse.json({ message: "Usage log not found" }, { status: 404 });
+    if (log.source === "task") {
+      return NextResponse.json(
+        { message: "This usage was logged from a milestone task and cannot be deleted here" },
+        { status: 403 }
+      );
+    }
 
     // Reverse the consumption so stock is restored
     for (const item of log.items) {

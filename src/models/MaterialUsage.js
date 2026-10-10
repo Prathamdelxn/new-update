@@ -31,6 +31,17 @@ const MaterialUsageSchema = new mongoose.Schema(
       }
     ],
     commonNote: String,
+
+    // "task" = logged automatically when a milestone task was submitted with
+    // materials used. Those logs are owned by the task and cannot be deleted
+    // from the Materials > Usage Log screen.
+    source: {
+      type: String,
+      enum: ["manual", "task"],
+      default: "manual",
+    },
+    milestone: { type: mongoose.Schema.Types.ObjectId, ref: "Milestone" },
+    taskId: { type: mongoose.Schema.Types.ObjectId },
     
     status: {
       type: String,
@@ -48,5 +59,11 @@ const MaterialUsageSchema = new mongoose.Schema(
     },
   }
 );
+
+// Dev hot-reload keeps the previously compiled model, which would silently drop
+// the newer `source`/`taskId` fields. Recompile if the cached schema is outdated.
+if (mongoose.models.MaterialUsage && !mongoose.models.MaterialUsage.schema.path("source")) {
+  mongoose.deleteModel("MaterialUsage");
+}
 
 export default mongoose.models.MaterialUsage || mongoose.model("MaterialUsage", MaterialUsageSchema);

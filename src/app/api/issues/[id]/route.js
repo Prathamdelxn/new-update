@@ -5,6 +5,7 @@ import Project from "@/models/Project";
 import User from "@/models/User";
 import { withAuth } from "@/lib/middleware";
 import { recordAudit } from "@/lib/auditHelper";
+import { userHasProjectPermission, snagChangePermissions } from "@/lib/permissions";
 import { sendEmail } from "@/lib/email";
 import { issueAssignedEmail, issueStatusEmail } from "@/lib/emailTemplates";
 
@@ -18,6 +19,13 @@ export const PATCH = withAuth(async function (req, { params }) {
     const issue = await Issue.findOne({ _id: id, organization: req.user.organizationId });
     if (!issue) {
       return NextResponse.json({ message: "Issue not found" }, { status: 404 });
+    }
+
+    // Snags & Issues: assign / complete / update each need their own permission
+    for (const permission of snagChangePermissions(body, issue)) {
+      if (!(await userHasProjectPermission(req, issue.project, permission))) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
     }
 
     // Update issue
@@ -98,6 +106,12 @@ export const DELETE = withAuth(async function (req, { params }) {
     const issue = await Issue.findOne({ _id: id, organization: req.user.organizationId });
     if (!issue) {
       return NextResponse.json({ message: "Issue not found" }, { status: 404 });
+    }
+
+    for (const permission of ["snags:delete"]) {
+      if (!(await userHasProjectPermission(req, issue.project, permission))) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
     }
 
     await Issue.findByIdAndDelete(id);

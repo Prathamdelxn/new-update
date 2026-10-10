@@ -4,7 +4,7 @@ const nextConfig = {
   outputFileTracingIncludes: {
     '/api/**/*': ['./node_modules/**/*.wasm', './node_modules/@sparticuz/chromium/bin/**/*']
   },
-  allowedDevOrigins: ['10.183.120.72', '192.168.1.16', '192.168.1.7'],
+  allowedDevOrigins: ['10.183.120.72', '192.168.1.16', '192.168.1.7', '192.168.1.3'],
   async headers() {
     return [
       {

@@ -1,23 +1,44 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import User from "@/models/User";
-import { withRole } from "@/lib/middleware";
+import { withAuth, withPermission } from "@/lib/middleware";
+import { userHasProjectPermission, payloadAssignsPrivilegedRole, isFullAccessRole } from "@/lib/permissions";
 import Role from "@/models/Role";
 import Project from "@/models/Project";
 
 /**
  * PATCH: Update team member
  */
-export const PATCH = withRole(async function (req, { params }) {
+export const PATCH = withAuth(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
 
-    const { name, email, phoneNumber, roleId, projectIds, projects, status } = await req.json();
+    const body = await req.json();
+    const { name, email, phoneNumber, roleId, projectIds, projects, status } = body;
 
-    const user = await User.findOne({ _id: id, organization: req.user.organizationId });
+    const user = await User.findOne({ _id: id, organization: req.user.organizationId }).populate("role", "name permissions isSystemRole");
     if (!user) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+
+    const isAdmin = req.user.role === "Admin";
+    const isSelf = id === req.user.id;
+    // Anyone may edit their own name/phone (Profile page) — no permission needed
+    const isOwnProfileEdit = isSelf && Object.keys(body).every((k) => ["name", "phoneNumber"].includes(k));
+    if (!isAdmin && !isOwnProfileEdit) {
+      if (!(await userHasProjectPermission(req, null, "users:update"))) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
+      if (isSelf && (roleId !== undefined || projects || projectIds || status)) {
+        return NextResponse.json({ message: "Forbidden: You cannot change your own role, projects or status" }, { status: 403 });
+      }
+      if (isFullAccessRole(user.role)) {
+        return NextResponse.json({ message: "Forbidden: Only an Admin can modify an Admin user" }, { status: 403 });
+      }
+      if (await payloadAssignsPrivilegedRole({ roleId, projects }, req.user.organizationId)) {
+        return NextResponse.json({ message: "Forbidden: Only an Admin can assign an Admin-level role" }, { status: 403 });
+      }
     }
 
     // Check for email duplicates if email is being changed
@@ -70,12 +91,12 @@ export const PATCH = withRole(async function (req, { params }) {
     }
     return NextResponse.json({ message: "Error updating member" }, { status: 500 });
   }
-}, ["Admin"]);
+});
 
 /**
  * DELETE: Remove team member
  */
-export const DELETE = withRole(async function (req, { params }) {
+export const DELETE = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
@@ -85,9 +106,12 @@ export const DELETE = withRole(async function (req, { params }) {
       return NextResponse.json({ message: "Forbidden: You cannot delete your own Administrator account" }, { status: 403 });
     }
 
-    const user = await User.findOne({ _id: id, organization: req.user.organizationId });
+    const user = await User.findOne({ _id: id, organization: req.user.organizationId }).populate("role", "name permissions isSystemRole");
     if (!user) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+    if (req.user.role !== "Admin" && isFullAccessRole(user.role)) {
+      return NextResponse.json({ message: "Forbidden: Only an Admin can remove an Admin user" }, { status: 403 });
     }
 
     // Capture logout/removal event for audit logging if needed
@@ -100,4 +124,4 @@ export const DELETE = withRole(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error removing member" }, { status: 500 });
   }
-}, ["Admin"]);
+}, "users:delete");

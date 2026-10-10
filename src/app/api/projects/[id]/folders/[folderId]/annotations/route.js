@@ -3,6 +3,7 @@ import dbConnect from "@/lib/db";
 import PlanFolder from "@/models/PlanFolder";
 import User from "@/models/User";
 import { withAuth, withPermission } from "@/lib/middleware";
+import { userHasProjectPermission } from "@/lib/permissions";
 import { emitToProject } from "@/lib/socket-server";
 
 // GET /api/projects/[id]/folders/[folderId]/annotations?documentId=xxx
@@ -46,31 +47,17 @@ export const GET = withPermission(async function (req, { params }) {
 
 // PATCH /api/projects/[id]/folders/[folderId]/annotations
 // Body: { documentId, annotations: [...] }
-// Replaces all annotations for the given documentId atomically.
-// This is semantically a create-or-update bulk upsert, so it accepts either
-// annotations:create or annotations:update — matching the frontend's
-// canAnnotate OR-logic, instead of blanket-requiring annotations:update.
+// Replaces all annotations for the given documentId atomically. Because the
+// client sends the whole list, compare it with what's stored and require the
+// matching permission for each kind of change: new pins need
+// annotations:create, edited pins annotations:update, removed pins
+// annotations:delete.
+const ANNOTATION_CONTENT_FIELDS = ["x", "y", "text", "imageUri", "videoUri", "audioUri"];
+
 export const PATCH = withAuth(async function (req, { params }) {
   try {
     const { id, folderId } = await params;
     await dbConnect();
-
-    if (req.user.role !== "Admin") {
-      const userWithRole = await User.findById(req.user.id).populate("role").populate("projects.role").select("role projects");
-      let perms = userWithRole?.role?.permissions || [];
-      const has = (perm) => perms.includes("*") || perms.includes(perm);
-      if (!has("annotations:create") && !has("annotations:update")) {
-        const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === id);
-        if (projectAssignment?.role) {
-          const projPerms = projectAssignment.role.permissions || [];
-          perms = [...perms, ...projPerms];
-          if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) perms.push("*");
-        }
-      }
-      if (!has("annotations:create") && !has("annotations:update")) {
-        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
-      }
-    }
 
     const { documentId, annotations } = await req.json();
 
@@ -86,21 +73,53 @@ export const PATCH = withAuth(async function (req, { params }) {
       return NextResponse.json({ message: "Folder not found" }, { status: 404 });
     }
 
+    const keyOf = (a) => String(a.clientId || a._id);
+    const existingByKey = new Map(
+      folder.annotations.filter((a) => a.documentId === documentId).map((a) => [keyOf(a), a])
+    );
+    const incomingKeys = new Set(annotations.map((a) => String(a.clientId)));
+    const isChanged = (prev, next) =>
+      ANNOTATION_CONTENT_FIELDS.some((f) => String(prev[f] ?? "") !== String(next[f] ?? ""));
+
+    const hasAdds = annotations.some((a) => !existingByKey.has(String(a.clientId)));
+    const hasUpdates = annotations.some((a) => {
+      const prev = existingByKey.get(String(a.clientId));
+      return prev && isChanged(prev, a);
+    });
+    const hasRemovals = [...existingByKey.keys()].some((k) => !incomingKeys.has(k));
+
+    if (req.user.role !== "Admin") {
+      const checks = [
+        [hasAdds, "annotations:create", "add annotations"],
+        [hasUpdates, "annotations:update", "edit annotations"],
+        [hasRemovals, "annotations:delete", "delete annotations"],
+      ];
+      for (const [needed, permission, label] of checks) {
+        if (needed && !(await userHasProjectPermission(req, id, permission))) {
+          return NextResponse.json({ message: `Forbidden: You don't have permission to ${label}` }, { status: 403 });
+        }
+      }
+    }
+
     folder.annotations = [
       ...folder.annotations.filter((a) => a.documentId !== documentId),
-      ...annotations.map((a) => ({
-        clientId:     a.clientId,
-        documentId,
-        x:            a.x,
-        y:            a.y,
-        text:         a.text || "",
-        imageUri:     a.imageUri || "",
-        videoUri:     a.videoUri || "",
-        audioUri:     a.audioUri || "",
-        createdBy:    req.user.id,
-        createdByName: req.user.name || "User",
-        createdAt:    a.createdAt ? new Date(a.createdAt) : new Date(),
-      })),
+      ...annotations.map((a) => {
+        // Existing pins keep their original author; only new pins get the current user
+        const prev = existingByKey.get(String(a.clientId));
+        return {
+          clientId:     a.clientId,
+          documentId,
+          x:            a.x,
+          y:            a.y,
+          text:         a.text || "",
+          imageUri:     a.imageUri || "",
+          videoUri:     a.videoUri || "",
+          audioUri:     a.audioUri || "",
+          createdBy:    prev?.createdBy || req.user.id,
+          createdByName: prev?.createdByName || req.user.name || "User",
+          createdAt:    prev?.createdAt || (a.createdAt ? new Date(a.createdAt) : new Date()),
+        };
+      }),
     ];
 
     await folder.save();

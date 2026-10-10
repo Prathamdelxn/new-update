@@ -9,7 +9,11 @@ export async function POST(req) {
     await dbConnect();
     const { email, password } = await req.json();
     // Find user and include password for comparison
-    const user = await User.findOne({ email }).select("+password").populate("role").populate("organization");
+    const user = await User.findOne({ email })
+      .select("+password")
+      .populate("role")
+      .populate("organization")
+      .populate("projects.role", "name permissions isSystemRole");
 
     if (!user) {
       return NextResponse.json(
@@ -65,6 +69,9 @@ export async function POST(req) {
               : undefined,
           organization: user.organization,
           industryType: user.organization?.industryType || "construction",
+          // Project-level roles — lets clients show actions like "Create Project"
+          // that a project role can grant.
+          projects: (user.projects || []).map((p) => ({ project: p.project, role: p.role })),
         },
       },
       { status: 200 }

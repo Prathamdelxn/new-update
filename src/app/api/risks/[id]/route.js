@@ -4,6 +4,7 @@ import Risk from "@/models/Risk";
 import Project from "@/models/Project";
 import { withAuth } from "@/lib/middleware";
 import { recordAudit } from "@/lib/auditHelper";
+import { userHasProjectPermission } from "@/lib/permissions";
 
 export const PATCH = withAuth(async function (req, { params }) {
   try {
@@ -13,6 +14,10 @@ export const PATCH = withAuth(async function (req, { params }) {
 
     const existingRisk = await Risk.findOne({ _id: id, organization: req.user.organizationId });
     if (!existingRisk) return NextResponse.json({ message: "Risk not found" }, { status: 404 });
+
+    if (!(await userHasProjectPermission(req, existingRisk.project, "risks:update"))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
 
     const updateData = { ...body };
     
@@ -61,12 +66,9 @@ export const DELETE = withAuth(async function (req, { params }) {
     const risk = await Risk.findOne({ _id: id, organization: req.user.organizationId });
     if (!risk) return NextResponse.json({ message: "Risk not found" }, { status: 404 });
 
-    // Only Admin, SuperAdmin or Owner can delete
-    const isOwner = String(risk.owner) === String(req.user.id);
-    const isAdmin = req.user.role === 'Admin' || req.user.role === 'SuperAdmin';
-
-    if (!isAdmin && !isOwner) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    // Risk & Escalation Matrix > Delete decides (Admin always passes)
+    if (!(await userHasProjectPermission(req, risk.project, "risks:delete"))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
     }
 
     const projectId = risk.project;

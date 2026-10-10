@@ -68,3 +68,35 @@ export const checkAndTransitionToOngoing = async (projectId) => {
     console.error("Error in checkAndTransitionToOngoing helper:", error);
   }
 };
+
+/**
+ * Moves an "Ongoing" project into "Under Snagging" once it has at least one
+ * milestone and every milestone is Completed — building work is done, so the
+ * snag inspection phase can begin. (Users with Project Management > Update can
+ * also start snagging manually from the project.)
+ */
+export const checkAndTransitionToSnagging = async (projectId) => {
+  try {
+    const project = await Project.findById(projectId);
+    if (!project || project.status !== "Ongoing") return;
+
+    const Milestone = (await import("@/models/Milestone")).default;
+    const milestones = await Milestone.find({ project: projectId }).select("status");
+    if (milestones.length === 0) return;
+    if (!milestones.every((m) => m.status === "Completed")) return;
+
+    project.status = "Under Snagging";
+    project.auditTrail.push({
+      userName: "System",
+      userRole: "Automated",
+      action: "StatusChange",
+      details: `Project status automatically transitioned from 'Ongoing' to 'Under Snagging'. All ${milestones.length} milestone(s) are completed.`,
+      timestamp: new Date()
+    });
+    await project.save();
+
+    emitToProject(projectId, 'project:updated');
+  } catch (error) {
+    console.error("Error in checkAndTransitionToSnagging helper:", error);
+  }
+};

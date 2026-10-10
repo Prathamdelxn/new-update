@@ -2,7 +2,7 @@
 import dbConnect from "@/lib/db";
 import Role from "@/models/Role";
 import User from "@/models/User";
-import { withAuth, withRole } from "@/lib/middleware";
+import { withAuth, withPermission } from "@/lib/middleware";
 
 export const GET = withAuth(async function (req) {
   try {
@@ -29,10 +29,15 @@ export const GET = withAuth(async function (req) {
   }
 });
 
-export const POST = withRole(async function (req) {
+export const POST = withPermission(async function (req) {
   try {
     await dbConnect();
     const { name, permissions, description } = await req.json();
+
+    // Only Admins may create a full-access ("*") role
+    if (req.user.role !== "Admin" && Array.isArray(permissions) && permissions.includes("*")) {
+      return NextResponse.json({ message: "Forbidden: Only an Admin can create a full-access role" }, { status: 403 });
+    }
 
     const role = new Role({
       name,
@@ -56,5 +61,5 @@ export const POST = withRole(async function (req) {
   } catch (error) {
     return NextResponse.json({ message: "Error creating role" }, { status: 500 });
   }
-}, ["Admin"]);
+}, "users:create");
 

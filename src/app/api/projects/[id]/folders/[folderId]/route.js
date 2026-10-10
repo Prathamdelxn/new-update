@@ -19,7 +19,7 @@ async function userHasPlansPermission(req, projectId, permission) {
     .select("role projects");
   let perms = userWithRole?.role?.permissions || [];
   if (!perms.includes("*") && !perms.includes(permission)) {
-    const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+    const projectAssignment = userWithRole.projects?.find((p) => p.project?.toString() === projectId);
     if (projectAssignment?.role) {
       const projPerms = projectAssignment.role.permissions || [];
       perms = [...perms, ...projPerms];

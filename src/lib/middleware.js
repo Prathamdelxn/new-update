@@ -4,6 +4,7 @@ import dbConnect from "./db";
 import User from "@/models/User";
 import Subscription from "@/models/Subscription";
 import Organization from "@/models/Organization";
+import { hasPermission, userHasAnyRolePermission } from "./permissions";
 
 /**
  * Higher Order Function to protect API routes
@@ -65,12 +66,12 @@ export const withPermission = (handler, permission) => {
       let perms = userWithRole?.role?.permissions || [];
       
       // If global perms don't cover it, check project-specific perms if applicable
-      if (!perms.includes("*") && !perms.includes(permission)) {
+      if (!hasPermission(perms, permission)) {
         const url = req.nextUrl.pathname;
         const projectMatch = url.match(/\/api\/projects\/([^\/]+)/);
         if (projectMatch && projectMatch[1]) {
            const projectId = projectMatch[1];
-           const projectAssignment = userWithRole.projects?.find(p => p.project.toString() === projectId);
+           const projectAssignment = userWithRole.projects?.find(p => p.project?.toString() === projectId);
            if (projectAssignment && projectAssignment.role) {
              const projPerms = projectAssignment.role.permissions || [];
              perms = [...perms, ...projPerms];
@@ -81,7 +82,26 @@ export const withPermission = (handler, permission) => {
         }
       }
 
-      if (!perms.includes("*") && !perms.includes(permission)) {
+      if (!hasPermission(perms, permission)) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
+      return handler(req, ...args);
+    } catch (error) {
+      console.log('Permission Check Error:', error);
+      return NextResponse.json({ message: "Permission check error" }, { status: 500 });
+    }
+  });
+};
+
+/**
+ * Like withPermission, but the permission may come from the global role OR any
+ * project role — for org-wide modules (Templates, Categories).
+ */
+export const withAnyRolePermission = (handler, permission) => {
+  return withAuth(async (req, ...args) => {
+    try {
+      await dbConnect();
+      if (!(await userHasAnyRolePermission(req, permission))) {
         return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
       }
       return handler(req, ...args);

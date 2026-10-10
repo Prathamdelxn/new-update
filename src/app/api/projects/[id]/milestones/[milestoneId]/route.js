@@ -5,6 +5,7 @@ import User from "@/models/User";
 import { withAuth, withPermission } from "@/lib/middleware";
 import { emitToProject } from "@/lib/socket-server";
 import RiskEngine from "@/lib/riskEngine";
+import { checkAndTransitionToSnagging } from "@/lib/projectStatusHelper";
 
 // Duplicated per-file, matching this codebase's convention (no shared
 // permission helpers across API route files).
@@ -16,7 +17,7 @@ async function userHasTasksPermission(req, projectId, permission) {
     .select("role projects");
   let perms = userWithRole?.role?.permissions || [];
   if (!perms.includes("*") && !perms.includes(permission)) {
-    const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+    const projectAssignment = userWithRole.projects?.find((p) => p.project?.toString() === projectId);
     if (projectAssignment?.role) {
       const projPerms = projectAssignment.role.permissions || [];
       perms = [...perms, ...projPerms];
@@ -180,6 +181,8 @@ export const PATCH = withAuth(async function (req, { params }) {
 
     await milestone.save();
     emitToProject(id, 'milestone:updated', { milestoneId });
+    // All milestones done → project moves into the snagging phase
+    await checkAndTransitionToSnagging(id);
 
     return NextResponse.json(milestone);
   } catch (error) {
@@ -203,6 +206,8 @@ export const DELETE = withPermission(async function (req, { params }) {
     }
 
     emitToProject(id, 'milestone:deleted', { milestoneId });
+    // Deleting the last unfinished milestone can also complete the build phase
+    await checkAndTransitionToSnagging(id);
     return NextResponse.json({ message: "Milestone deleted successfully" });
   } catch (error) {
     return NextResponse.json({ message: "Error deleting milestone" }, { status: 500 });

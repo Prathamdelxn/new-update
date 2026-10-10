@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Template from "@/models/Template";
-import { withAuth } from "@/lib/middleware";
+import { withAuth, withAnyRolePermission } from "@/lib/middleware";
 import TemplateCategory from "@/models/TemplateCategory";
 /**
  * GET: Fetch all project templates
@@ -27,7 +27,7 @@ export const GET = withAuth(async function (req) {
 /**
  * POST: Create a new project template
  */
-export const POST = withAuth(async function (req) {
+export const POST = withAnyRolePermission(async function (req) {
   try {
     await dbConnect();
     const data = await req.json();
@@ -77,4 +77,4 @@ export const POST = withAuth(async function (req) {
       { status: 500 }
     );
   }
-});
+}, "template:create");

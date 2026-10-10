@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Template from "@/models/Template";
-import { withAuth } from "@/lib/middleware";
+import { withAuth, withAnyRolePermission } from "@/lib/middleware";
 
 /**
  * GET: Fetch a single project template
@@ -32,7 +32,7 @@ export const GET = withAuth(async function (req, { params }) {
 /**
  * PATCH: Update a project template
  */
-export const PATCH = withAuth(async function (req, { params }) {
+export const PATCH = withAnyRolePermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { id } = await params;
@@ -72,12 +72,12 @@ export const PATCH = withAuth(async function (req, { params }) {
       { status: 500 }
     );
   }
-});
+}, "template:update");
 
 /**
  * DELETE: Remove a project template
  */
-export const DELETE = withAuth(async function (req, { params }) {
+export const DELETE = withAnyRolePermission(async function (req, { params }) {
   try {
     await dbConnect();
     const { id } = await params;
@@ -96,4 +96,4 @@ export const DELETE = withAuth(async function (req, { params }) {
       { status: 500 }
     );
   }
-});
+}, "template:delete");

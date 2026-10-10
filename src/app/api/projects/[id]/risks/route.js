@@ -8,6 +8,7 @@ import Role from "@/models/Role";
 import { withAuth } from "@/lib/middleware";
 import { emitToProject, emitToUser } from "@/lib/socket-server";
 import { recordAudit } from "@/lib/auditHelper";
+import { userHasProjectPermission } from "@/lib/permissions";
 
 export const GET = withAuth(async function (req, { params }) {
   try {
@@ -31,6 +32,10 @@ export const POST = withAuth(async function (req, { params }) {
     const { id } = await params;
     const body = await req.json();
     await dbConnect();
+
+    if (!(await userHasProjectPermission(req, id, "risks:create"))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
 
     const newRisk = await Risk.create({
       ...body,

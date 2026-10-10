@@ -136,7 +136,7 @@ export const POST = withAuth(async function (req, { params }) {
   try {
     const { id: projectId } = await params;
     await dbConnect();
-    const { items, commonNote, locationOrTask } = await req.json();
+    const { items, commonNote, locationOrTask, source, milestoneId, taskId } = await req.json();
  
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ message: "No items provided" }, { status: 400 });
@@ -179,7 +179,10 @@ export const POST = withAuth(async function (req, { params }) {
       locationOrTask: locationOrTask || "",
       items: processedItems,
       commonNote: commonNote || "",
-      status: "Verified"
+      status: "Verified",
+      source: source === "task" ? "task" : "manual",
+      ...(source === "task" && milestoneId ? { milestone: milestoneId } : {}),
+      ...(source === "task" && taskId ? { taskId } : {}),
     });
  
     // Immediately update actual inventory (totalConsumed)

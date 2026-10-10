@@ -9,6 +9,7 @@ import SiteSurvey from "@/models/SiteSurvey";
 import Snag from "@/models/Snag";
 import Customer from "@/models/Customer";
 import Activity from "@/models/Activity";
+import { hasPermission } from "@/lib/permissions";
 
 // Duplicated per-file, matching this codebase's convention (no shared
 // permission helpers across API route files).
@@ -19,8 +20,8 @@ async function userHasPermission(req, projectId, permission) {
     .populate("projects.role")
     .select("role projects");
   let perms = userWithRole?.role?.permissions || [];
-  if (!perms.includes("*") && !perms.includes(permission)) {
-    const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
+  if (!hasPermission(perms, permission)) {
+    const projectAssignment = userWithRole.projects?.find((p) => p.project?.toString() === projectId);
     if (projectAssignment?.role) {
       const projPerms = projectAssignment.role.permissions || [];
       perms = [...perms, ...projPerms];
@@ -29,15 +30,14 @@ async function userHasPermission(req, projectId, permission) {
       }
     }
   }
-  return perms.includes("*") || perms.includes(permission);
+  return hasPermission(perms, permission);
 }
 
 // GET a single project
-export const GET = withAuth(async function (req, { params }) {
+export const GET = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
-    console.log("id", id)
     const project = await Project.findOne({ _id: id, organization: req.user.organizationId })
       .populate({ path: "createdBy", select: "+__enc_name +__enc_phoneNumber", populate: { path: "role" } })
       .populate({ path: "members.user", select: "+__enc_name +__enc_phoneNumber", populate: { path: "role" } })
@@ -59,7 +59,7 @@ export const GET = withAuth(async function (req, { params }) {
   } catch (error) {
     return NextResponse.json({ message: "Error fetching project" }, { status: 500 });
   }
-});
+}, "projects:view");
 
 // UPDATE a project (Full)
 export const PUT = withPermission(async function (req, { params }) {
@@ -150,21 +150,54 @@ export const PATCH = withAuth(async function (req, { params }) {
     // changes, budget actions, survey assignment), each requiring different
     // permissions — it can't be blanket-gated. Only check "projects:update"
     // when the request actually carries project-edit fields, and separately
-    // require "sitesurvey:manage" when it's assigning a site surveyor.
+    // require "sitesurvey:assign" when it's assigning a site surveyor.
     const isProjectEdit = PROJECT_EDIT_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(updateData, f));
     if (isProjectEdit && !(await userHasPermission(req, id, "projects:update"))) {
       return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
     }
     if (
       Object.prototype.hasOwnProperty.call(updateData, "siteSurveyor") &&
-      !(await userHasPermission(req, id, "sitesurvey:manage"))
+      !(await userHasPermission(req, id, "sitesurvey:assign"))
     ) {
       return NextResponse.json({ message: "Forbidden: No site survey assignment permission" }, { status: 403 });
+    }
+    // Changing who is on the project is the "assign" action
+    if (
+      ["members", "assignedTo"].some((f) => Object.prototype.hasOwnProperty.call(updateData, f)) &&
+      !(await userHasPermission(req, id, "projects:assign"))
+    ) {
+      return NextResponse.json({ message: "Forbidden: No permission to assign project members" }, { status: 403 });
     }
 
     const project = await Project.findOne({ _id: id, organization: req.user.organizationId });
     if (!project) {
       return NextResponse.json({ message: "Project not found" }, { status: 404 });
+    }
+
+    // Starting the snagging phase by hand: only from Ongoing, needs Project Management > Update
+    if (updateData.status === "Under Snagging" && project.status !== "Under Snagging") {
+      if (project.status !== "Ongoing") {
+        return NextResponse.json({ message: "Snagging can only be started while the project is Ongoing" }, { status: 400 });
+      }
+      if (!(await userHasPermission(req, id, "projects:update"))) {
+        return NextResponse.json({ message: "Forbidden: No permission to start the snagging phase" }, { status: 403 });
+      }
+    }
+
+    // Handover workflow (Handover Management permissions):
+    // requesting a handover = create, choosing its approver = assign,
+    // approving/rejecting a pending handover = approve.
+    const forbidden = (message) => NextResponse.json({ message: `Forbidden: ${message}` }, { status: 403 });
+    // (approving re-sends the current approver, so only a *new* approver counts)
+    if (updateData.handoverApprover && String(updateData.handoverApprover) !== String(project.handoverApprover || "")) {
+      if (!(await userHasPermission(req, id, "handover:create"))) return forbidden("No permission to request a handover");
+      if (!(await userHasPermission(req, id, "handover:assign"))) return forbidden("No permission to assign a handover approver");
+    }
+    if (project.status === "Pending Handover" && ["Completed", "Handover Rejected"].includes(updateData.status)) {
+      if (!(await userHasPermission(req, id, "handover:approve"))) return forbidden("No permission to approve or reject handovers");
+    }
+    if (project.status === "Handover Rejected" && updateData.status === "Ongoing" && updateData.handoverApprover === null) {
+      if (!(await userHasPermission(req, id, "handover:create"))) return forbidden("No permission to restart the handover");
     }
 
     // Apply partial updates

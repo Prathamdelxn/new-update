@@ -3,11 +3,36 @@ import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
 import Template from "@/models/Template";
 import TemplateCategory from "@/models/TemplateCategory";
-import { withAuth, withPermission } from "@/lib/middleware"; // trigger rebuild
+import User from "@/models/User";
+import { withAuth } from "@/lib/middleware"; // trigger rebuild
+import { hasPermission, isFullAccessRole } from "@/lib/permissions";
 
-export const POST = withPermission(async function (req) {
+// Creating a project isn't scoped to an existing project, so Create counts
+// from the user's global role OR any of their project roles. When it comes
+// from a project role, returns that role so the creator can be enrolled on the
+// new project with it (otherwise they couldn't see the project they created).
+async function resolveCreateAccess(req) {
+  if (req.user.role === "Admin") return { allowed: true, grantRole: null };
+  const user = await User.findById(req.user.id)
+    .populate("role", "name permissions isSystemRole")
+    .populate("projects.role", "name permissions isSystemRole")
+    .select("role projects");
+  if (isFullAccessRole(user?.role) || hasPermission(user?.role?.permissions, "projects:create")) {
+    return { allowed: true, grantRole: null };
+  }
+  const grant = (user?.projects || []).find(
+    (p) => p.role && (isFullAccessRole(p.role) || hasPermission(p.role.permissions, "projects:create"))
+  );
+  return grant ? { allowed: true, grantRole: grant.role._id } : { allowed: false, grantRole: null };
+}
+
+export const POST = withAuth(async function (req) {
   try {
     await dbConnect();
+    const access = await resolveCreateAccess(req);
+    if (!access.allowed) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
     const data = await req.json();
 
     const {
@@ -64,7 +89,15 @@ export const POST = withPermission(async function (req) {
       attendanceRadius,
       organization: req.user.organizationId,
       createdBy: req.user.id || createdBy,
+      ...(access.grantRole ? { members: [{ user: req.user.id, role: access.grantRole }] } : {}),
     });
+
+    if (access.grantRole) {
+      await User.updateOne(
+        { _id: req.user.id },
+        { $push: { projects: { project: project._id, role: access.grantRole } } }
+      );
+    }
 
     return NextResponse.json(project, { status: 201 });
 
@@ -75,13 +108,34 @@ export const POST = withPermission(async function (req) {
       { status: 500 }
     );
   }
-}, "projects:create");
+});
+
+// Projects the user may view: all of them with a global projects:view (or
+// Admin); otherwise only those where their project-level role grants view.
+async function getViewFilter(req) {
+  const filter = { organization: req.user.organizationId };
+  if (req.user.role === "Admin") return filter;
+
+  const user = await User.findById(req.user.id)
+    .populate("role", "name permissions isSystemRole")
+    .populate("projects.role", "name permissions isSystemRole")
+    .select("role projects");
+
+  if (isFullAccessRole(user?.role) || hasPermission(user?.role?.permissions, "projects:view")) {
+    return filter;
+  }
+
+  const viewableIds = (user?.projects || [])
+    .filter((p) => p.project && (isFullAccessRole(p.role) || hasPermission(p.role?.permissions, "projects:view")))
+    .map((p) => p.project);
+  return { ...filter, _id: { $in: viewableIds } };
+}
 
 export const GET = withAuth(async function (req) {
   try {
     await dbConnect();
 
-    const projects = await Project.find({ organization: req.user.organizationId })
+    const projects = await Project.find(await getViewFilter(req))
       .populate('category', 'name')
       .populate({
         path: 'templateId',
@@ -90,6 +144,8 @@ export const GET = withAuth(async function (req) {
       })
       .populate('customer', 'name email mobileNumber propertyType')
       .populate('assignedTo', 'name')
+      // Member role permissions let the web show per-project actions (edit/delete)
+      .populate('members.role', 'name permissions isSystemRole')
       .sort({ createdAt: -1 });
 
     // Decrypt populated customer fields if using encryption

@@ -8,11 +8,16 @@ import { emitToProject } from "@/lib/socket-server";
 import { sendEmail } from "@/lib/email";
 import { surveySumbittedEmail, surveyDecisionEmail } from "@/lib/emailTemplates";
 import Role from "@/models/Role";
+import { userHasProjectPermission } from "@/lib/permissions";
 
 export const POST = withAuth(async function (req, { params }) {
   try {
     const { id: projectId } = await params;
     await dbConnect();
+
+    if (!(await userHasProjectPermission(req, projectId, "sitesurvey:create"))) {
+      return NextResponse.json({ message: "Forbidden: No permission to create a site survey" }, { status: 403 });
+    }
 
     const surveyPayload = await req.json();
 
@@ -87,29 +92,10 @@ export const GET = withAuth(async function (req, { params }) {
     const { id: projectId } = await params;
     await dbConnect();
 
-    if (req.user.role !== "Admin") {
-      const project = await Project.findOne({ _id: projectId, organization: req.user.organizationId }).select("siteSurveyor");
-      const isAssignedSurveyor = project?.siteSurveyor && project.siteSurveyor.toString() === req.user.id;
-      if (!isAssignedSurveyor) {
-        const userWithRole = await User.findById(req.user.id)
-          .populate("role")
-          .populate("projects.role")
-          .select("role projects");
-        let perms = userWithRole?.role?.permissions || [];
-        if (!perms.includes("*") && !perms.includes("sitesurvey:view")) {
-          const projectAssignment = userWithRole.projects?.find((p) => p.project.toString() === projectId);
-          if (projectAssignment?.role) {
-            const projPerms = projectAssignment.role.permissions || [];
-            perms = [...perms, ...projPerms];
-            if (projectAssignment.role.name === "Admin" || projectAssignment.role.isSystemRole) {
-              perms.push("*");
-            }
-          }
-        }
-        if (!perms.includes("*") && !perms.includes("sitesurvey:view")) {
-          return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
-        }
-      }
+    // Viewing is governed by the role's Site Survey > View permission alone —
+    // being the assigned surveyor doesn't grant it.
+    if (!(await userHasProjectPermission(req, projectId, "sitesurvey:view"))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
     }
 
     const survey = await SiteSurvey.findOne({ project: projectId, organization: req.user.organizationId })
@@ -136,6 +122,17 @@ export const PATCH = withAuth(async function (req, { params }) {
     await dbConnect();
 
     const { action, rejectionReason, ...updatePayload } = await req.json(); // action = "Approve" or "Reject" or "UpdateDetails"
+
+    const requiredPermission =
+      action === "Approve" || action === "Reject" ? "sitesurvey:approve"
+        : action === "UpdateDetails" ? "sitesurvey:update"
+          : null;
+    if (!requiredPermission) {
+      return NextResponse.json({ message: "Invalid survey action" }, { status: 400 });
+    }
+    if (!(await userHasProjectPermission(req, projectId, requiredPermission))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
     const survey = await SiteSurvey.findOne({ project: projectId, organization: req.user.organizationId });
     const project = await Project.findOne({ _id: projectId, organization: req.user.organizationId });
 

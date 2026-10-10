@@ -59,6 +59,14 @@ const MilestoneSchema = new mongoose.Schema(
           uploadedAt: Date
         },
         completionNote: { type: String, trim: true },
+        materialsUsed: [
+          {
+            materialId: { type: mongoose.Schema.Types.ObjectId, ref: 'Material' },
+            name: { type: String },
+            quantity: { type: Number },
+            unit: { type: String },
+          }
+        ],
         sourceSnag: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Snag",

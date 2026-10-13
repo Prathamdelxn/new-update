@@ -121,6 +121,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Material from "@/models/Material";
 import { withAuth } from "@/lib/middleware";
+import { userHasProjectPermission } from "@/lib/permissions";
  
 // PATCH: Update material details or stock
 export const PATCH = withAuth(async function (req, { params }) {
@@ -137,6 +138,16 @@ export const PATCH = withAuth(async function (req, { params }) {
  
     if (!material) {
       return NextResponse.json({ message: "Material not found" }, { status: 404 });
+    }
+
+    // Material Management: editing name/unit is Update; recording a stock
+    // movement (quantity received/used) is a log entry, i.e. Create.
+    const editsDetails = (name !== undefined && name !== material.name) || (unit !== undefined && unit !== material.unit);
+    const logsStock = quantity !== undefined && quantity !== null && quantity !== "";
+    for (const permission of [...(editsDetails ? ["inventory:update"] : []), ...(logsStock ? ["inventory:create"] : [])]) {
+      if (!(await userHasProjectPermission(req, material.project, permission))) {
+        return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+      }
     }
  
     const oldName = material.name;
@@ -228,6 +239,15 @@ export const DELETE = withAuth(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
+    const existing = await Material.findOne({ _id: id, organization: req.user.organizationId });
+    if (!existing) {
+      return NextResponse.json({ message: "Material not found" }, { status: 404 });
+    }
+    // Material Management > Delete
+    if (!(await userHasProjectPermission(req, existing.project, "inventory:delete"))) {
+      return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
+
     const material = await Material.findOneAndDelete({
       _id: id,
       organization: req.user.organizationId

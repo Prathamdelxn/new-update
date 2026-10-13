@@ -135,8 +135,8 @@ export const DELETE = withAuth(async function (req, { params }) {
     }
 
     // Check permissions
-    const isUploader = document.uploadedBy?.user?.toString() === req.user.id;
-    const canDelete = isUploader || (await userHasLandPermission(req, id, "land:delete"));
+    // Land Documents > Delete decides — uploading a document doesn't grant deleting it
+    const canDelete = await userHasLandPermission(req, id, "land:delete");
 
     if (!canDelete) {
       return NextResponse.json({ message: "Forbidden: No deletion permission" }, { status: 403 });

@@ -92,9 +92,13 @@ export const GET = withAuth(async function (req, { params }) {
     const { id: projectId } = await params;
     await dbConnect();
 
-    // Viewing is governed by the role's Site Survey > View permission alone —
-    // being the assigned surveyor doesn't grant it.
-    if (!(await userHasProjectPermission(req, projectId, "sitesurvey:view"))) {
+    const canView = (
+      req.user.role === "Admin" ||
+      (await userHasProjectPermission(req, projectId, "sitesurvey:view")) ||
+      (await userHasProjectPermission(req, projectId, "sitesurvey:create")) ||
+      (await userHasProjectPermission(req, projectId, "sitesurvey:update"))
+    );
+    if (!canView) {
       return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
     }
 
@@ -130,7 +134,12 @@ export const PATCH = withAuth(async function (req, { params }) {
     if (!requiredPermission) {
       return NextResponse.json({ message: "Invalid survey action" }, { status: 400 });
     }
-    if (!(await userHasProjectPermission(req, projectId, requiredPermission))) {
+    const hasPerm =
+      action === "UpdateDetails"
+        ? (await userHasProjectPermission(req, projectId, "sitesurvey:update")) ||
+          (await userHasProjectPermission(req, projectId, "sitesurvey:create"))
+        : await userHasProjectPermission(req, projectId, requiredPermission);
+    if (!hasPerm) {
       return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
     }
     const survey = await SiteSurvey.findOne({ project: projectId, organization: req.user.organizationId });
@@ -162,9 +171,12 @@ export const PATCH = withAuth(async function (req, { params }) {
         details: `Site Survey Rejected. Reason: ${rejectionReason}`,
       });
     } else if (action === "UpdateDetails") {
-      // Validate that the user is the original surveyor
-      if (survey.surveyor.toString() !== req.user.id) {
-        return NextResponse.json({ message: "Only the original surveyor can update details" }, { status: 403 });
+      // Validate that the user is the original surveyor, assigned surveyor, or an Admin
+      const isOriginalSurveyor = String(survey.surveyor?._id || survey.surveyor || "") === String(req.user.id);
+      const isAssignedSurveyor = String(project.siteSurveyor?._id || project.siteSurveyor || "") === String(req.user.id);
+      const isAdmin = req.user.role === "Admin" || (typeof req.user.role === "object" && req.user.role?.name === "Admin");
+      if (!isOriginalSurveyor && !isAssignedSurveyor && !isAdmin) {
+        return NextResponse.json({ message: "Only the surveyor or an Admin can update details" }, { status: 403 });
       }
 
       // Validate that it's not approved yet

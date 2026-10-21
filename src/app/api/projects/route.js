@@ -4,6 +4,7 @@ import Project from "@/models/Project";
 import Template from "@/models/Template";
 import TemplateCategory from "@/models/TemplateCategory";
 import User from "@/models/User";
+import SiteSurvey from "@/models/SiteSurvey";
 import { withAuth } from "@/lib/middleware"; // trigger rebuild
 import { hasPermission, isFullAccessRole } from "@/lib/permissions";
 
@@ -144,6 +145,7 @@ export const GET = withAuth(async function (req) {
       })
       .populate('customer', 'name email mobileNumber propertyType')
       .populate('assignedTo', 'name')
+      .populate('siteSurveyor', 'name email')
       // Member role permissions let the web show per-project actions (edit/delete)
       .populate('members.role', 'name permissions isSystemRole')
       .sort({ createdAt: -1 });
@@ -162,7 +164,25 @@ export const GET = withAuth(async function (req) {
       }
     });
 
-    return NextResponse.json(projects, { status: 200 });
+    const projectIds = projects.map(p => p._id);
+    const surveys = await SiteSurvey.find(
+      { project: { $in: projectIds } },
+      { project: 1, status: 1, rejectionReason: 1 }
+    );
+    const surveyMap = {};
+    surveys.forEach(s => {
+      surveyMap[s.project.toString()] = s;
+    });
+
+    const projectsWithSurveys = projects.map(proj => {
+      const projObj = proj.toObject();
+      const s = surveyMap[proj._id.toString()];
+      projObj.surveyStatus = s ? s.status : null;
+      projObj.surveyRejectionReason = s ? s.rejectionReason : null;
+      return projObj;
+    });
+
+    return NextResponse.json(projectsWithSurveys, { status: 200 });
 
   } catch (error) {
     console.error("Fetch Projects Error:", error);

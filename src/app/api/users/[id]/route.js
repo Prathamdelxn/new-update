@@ -22,8 +22,9 @@ export const PATCH = withAuth(async function (req, { params }) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
+    const currentUserId = (req.user?.id || req.user?._id)?.toString();
     const isAdmin = req.user.role === "Admin";
-    const isSelf = id === req.user.id;
+    const isSelf = id?.toString() === currentUserId;
     // Anyone may edit their own name/phone (Profile page) — no permission needed
     const isOwnProfileEdit = isSelf && Object.keys(body).every((k) => ["name", "phoneNumber"].includes(k));
     if (!isAdmin && !isOwnProfileEdit) {
@@ -102,13 +103,17 @@ export const DELETE = withPermission(async function (req, { params }) {
     await dbConnect();
 
     // Security: Prevent self-deletion
-    if (id === req.user.id) {
-      return NextResponse.json({ message: "Forbidden: You cannot delete your own Administrator account" }, { status: 403 });
+    const currentUserId = (req.user?.id || req.user?._id)?.toString();
+    if (id?.toString() === currentUserId) {
+      return NextResponse.json({ message: "Forbidden: You cannot delete your own account" }, { status: 403 });
     }
 
     const user = await User.findOne({ _id: id, organization: req.user.organizationId }).populate("role", "name permissions isSystemRole");
     if (!user) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+    if (user._id?.toString() === currentUserId) {
+      return NextResponse.json({ message: "Forbidden: You cannot delete your own account" }, { status: 403 });
     }
     if (req.user.role !== "Admin" && isFullAccessRole(user.role)) {
       return NextResponse.json({ message: "Forbidden: Only an Admin can remove an Admin user" }, { status: 403 });

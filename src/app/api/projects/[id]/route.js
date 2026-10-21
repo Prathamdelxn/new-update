@@ -156,6 +156,30 @@ export const PATCH = withAuth(async function (req, { params }) {
       return NextResponse.json({ message: "Forbidden: Insufficient permissions" }, { status: 403 });
     }
     if (
+      Object.prototype.hasOwnProperty.call(updateData, "siteSurveyor") && updateData.siteSurveyor
+    ) {
+      if (!(await userHasPermission(req, id, "sitesurvey:assign"))) {
+        return NextResponse.json({ message: "Forbidden: No site survey assignment permission" }, { status: 403 });
+      }
+      const surveyorUser = await User.findOne({ _id: updateData.siteSurveyor, organization: req.user.organizationId })
+        .populate("role", "name permissions isSystemRole")
+        .populate("projects.role", "name permissions isSystemRole");
+      if (!surveyorUser) {
+        return NextResponse.json({ message: "Site surveyor user not found" }, { status: 404 });
+      }
+      const isSurveyorAdmin = surveyorUser.role?.name === "Admin" || surveyorUser.role?.isSystemRole || (surveyorUser.role?.permissions || []).includes("*");
+      const hasGlobalCreate = isSurveyorAdmin || hasPermission(surveyorUser.role?.permissions, "sitesurvey:create");
+      const projAssignment = (surveyorUser.projects || []).find(p => (p.project?._id || p.project)?.toString() === id.toString());
+      const hasProjCreate = projAssignment?.role && (
+        projAssignment.role.name === "Admin" ||
+        projAssignment.role.isSystemRole ||
+        (projAssignment.role.permissions || []).includes("*") ||
+        hasPermission(projAssignment.role.permissions, "sitesurvey:create")
+      );
+      if (!hasGlobalCreate && !hasProjCreate) {
+        return NextResponse.json({ message: "The selected user does not have permission to create site surveys" }, { status: 400 });
+      }
+    } else if (
       Object.prototype.hasOwnProperty.call(updateData, "siteSurveyor") &&
       !(await userHasPermission(req, id, "sitesurvey:assign"))
     ) {

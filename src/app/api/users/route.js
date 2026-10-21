@@ -28,28 +28,35 @@ export const GET = withAuth(async function (req) {
     // Filter logic: Include if (in project) OR (is Admin with '*' perm)
     if (projectId) {
       users = users.filter(u =>
-        (u.projects && u.projects.some(p => p.project && p.project._id.toString() === projectId)) ||
-        (u.role && u.role.permissions.includes("*"))
+        (u.projects && u.projects.some(p => p.project && (p.project._id || p.project).toString() === projectId)) ||
+        (u.role && (u.role.name === "Admin" || u.role.isSystemRole || u.role.permissions?.includes("*")))
       );
     }
 
     // Secondary filter by specific permission if requested
     if (permission) {
+      // When querying for site survey, users must specifically have create permission
+      // (not just view, update, or delete) to be assigned as surveyor.
+      const targetPerm = permission === "sitesurvey" ? "sitesurvey:create" : permission;
+
+      const checkRoleHasPerm = (role) => {
+        if (!role) return false;
+        if (role.name === "Admin" || role.isSystemRole) return true;
+        const perms = role.permissions || [];
+        if (perms.includes("*")) return true;
+        return hasPermission(perms, targetPerm);
+      };
+
       users = users.filter(u => {
-        // Global admin check
-        if (u.role && (hasPermission(u.role.permissions, permission) || u.role.permissions.some(p => p.startsWith(`${permission}:`)))) {
+        // Global role check
+        if (checkRoleHasPerm(u.role)) {
           return true;
         }
         // Project role check
         if (projectId && u.projects) {
-          const userProject = u.projects.find(p => p.project && p.project._id.toString() === projectId);
-          if (userProject && userProject.role) {
-            const projRole = userProject.role;
-            const hasPerm = projRole.permissions && (hasPermission(projRole.permissions, permission) || projRole.permissions.some(p => p.startsWith(`${permission}:`)));
-            console.log(`Checking project role permissions for user ${u.email}:`, projRole.permissions, `hasPerm:`, hasPerm);
-            if (hasPerm) {
-              return true;
-            }
+          const userProject = u.projects.find(p => p.project && (p.project._id || p.project).toString() === projectId);
+          if (userProject && checkRoleHasPerm(userProject.role)) {
+            return true;
           }
         }
         return false;

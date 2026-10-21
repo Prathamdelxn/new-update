@@ -79,6 +79,12 @@ export const withPermission = (handler, permission) => {
                perms.push("*");
              }
            }
+        } else {
+           const anyProjectHasPerm = (userWithRole.projects || []).some(p => {
+             const projPerms = p.role?.permissions || [];
+             return p.role?.name === "Admin" || p.role?.isSystemRole || hasPermission(projPerms, permission);
+           });
+           if (anyProjectHasPerm) perms.push(permission);
         }
       }
 

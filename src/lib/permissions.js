@@ -109,6 +109,11 @@ export async function userHasProjectPermission(req, projectId, permission) {
     .populate("projects.role")
     .select("role projects");
   if (hasPermission(user?.role?.permissions, permission)) return true;
+  if (!projectId) {
+    return (user?.projects || []).some(
+      (p) => p.role && (isFullAccessRole(p.role) || hasPermission(p.role.permissions, permission))
+    );
+  }
   const assignment = user?.projects?.find((p) => p.project?.toString() === String(projectId));
   if (!assignment?.role) return false;
   return isFullAccessRole(assignment.role) || hasPermission(assignment.role.permissions, permission);

@@ -117,6 +117,11 @@ const CustomerSchema = new mongoose.Schema(
         totalAmount: Number,
         status: { type: String, enum: ['draft', 'pending_approval', 'approved', 'rejected'], default: 'draft' },
         createdAt: { type: Date, default: Date.now },
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        createdByName: String,
+        createdByEmail: String,
+        updatedAt: Date,
+        updatedByName: String,
         notes: String
       }
     ],

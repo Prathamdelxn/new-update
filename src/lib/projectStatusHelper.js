@@ -60,10 +60,14 @@ export const checkAndTransitionToOngoing = async (projectId) => {
     });
 
     await project.save();
-    
+
     // Broadcast updates
     emitToProject(projectId, 'project:updated');
-    
+
+    // Milestones may all be completed already (e.g. planning approved late):
+    // then the project goes straight on to snagging
+    await checkAndTransitionToSnagging(projectId);
+
   } catch (error) {
     console.error("Error in checkAndTransitionToOngoing helper:", error);
   }

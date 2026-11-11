@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 
 const OtpRegistrationSchema = new mongoose.Schema(
   {
+    organizationName: {
+      type: String,
+      trim: true,
+    },
     name: {
       type: String,
       required: true,

@@ -9,7 +9,7 @@ import { otpEmail } from "@/lib/emailTemplates";
 export async function POST(req) {
   try {
     await dbConnect();
-    const { name, email, password, phoneNumber, industryType } = await req.json();
+    const { name, email, password, phoneNumber, industryType, organizationName } = await req.json();
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -30,7 +30,16 @@ export async function POST(req) {
     // Store in OtpRegistration (upsert to handle if they try again)
     await OtpRegistration.findOneAndUpdate(
       { email },
-      { name, email, password: hashedPassword, phoneNumber, industryType: industryType || "construction", otp, createdAt: Date.now() },
+      {
+        name,
+        email,
+        password: hashedPassword,
+        phoneNumber,
+        industryType: industryType || "construction",
+        organizationName: organizationName?.trim() || undefined,
+        otp,
+        createdAt: Date.now(),
+      },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 

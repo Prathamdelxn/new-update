@@ -40,7 +40,7 @@ export const GET = withAuth(async function (req) {
         projectStats: { total: 0, statusCounts: {} },
         taskStats: { total: 0, completed: 0, overdue: 0, dueToday: 0, dueTodayList: [], completionPct: 0 },
         riskStats: { total: 0, statusCounts: {}, criticalRisks: [] },
-        snagStats: { total: 0, open: 0, resolved: 0 },
+        snagStats: { total: 0, open: 0, resolved: 0, recentSnags: [] },
       });
     }
 
@@ -79,27 +79,25 @@ export const GET = withAuth(async function (req) {
     });
 
     // 2. Fetch Milestones & Tasks strictly for the current organization's projects
-    let milestoneQuery = { organization: orgId };
+    let milestoneQuery = null;
     if (requestedProjectId && requestedProjectId !== 'all') {
       milestoneQuery = {
-        $and: [
-          { $or: [{ organization: orgId }, { organization: { $exists: false } }] },
-          { project: requestedProjectId },
-        ],
+        project: requestedProjectId,
+        organization: orgId,
       };
     } else if (projectIds.length > 0) {
       milestoneQuery = {
-        $or: [
-          { project: { $in: projectIds } },
-          { organization: orgId },
-        ],
+        project: { $in: projectIds },
+        organization: orgId,
       };
     }
 
-    const milestones = await Milestone.find(
-      milestoneQuery,
-      "name tasks dueDate status project completedAt createdAt"
-    ).lean();
+    const milestones = milestoneQuery
+      ? await Milestone.find(
+          milestoneQuery,
+          "name tasks dueDate status project completedAt createdAt"
+        ).lean()
+      : [];
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -243,10 +241,12 @@ export const GET = withAuth(async function (req) {
     });
 
     // 3. Fetch Risks
-    const risks = await Risk.find(
-      { project: { $in: projectIds }, organization: orgId },
-      "title status impact project"
-    ).lean();
+    const risks = projectIds.length > 0
+      ? await Risk.find(
+          { project: { $in: projectIds }, organization: orgId },
+          "title status impact project"
+        ).lean()
+      : [];
 
     const riskStatusCounts = { Critical: 0, Active: 0, Monitored: 0, Resolved: 0 };
     risks.forEach((r) => {
@@ -271,85 +271,108 @@ export const GET = withAuth(async function (req) {
     // 4. Fetch Snags (Punch list) & Issues
     let openSnags = 0;
     let resolvedSnags = 0;
-    try {
-      const snags = await Snag.find({ project: { $in: projectIds }, organization: orgId }, "status priority").lean();
-      snags.forEach((s) => {
-        if (s.status === "Resolved" || s.status === "Closed") resolvedSnags++;
-        else openSnags++;
-      });
-    } catch (_) { }
+    const recentSnags = [];
+    if (projectIds.length > 0) {
+      try {
+        const snags = await Snag.find(
+          { project: { $in: projectIds }, organization: orgId },
+          "title status priority project createdAt"
+        ).sort({ createdAt: -1 }).lean();
+        snags.forEach((s) => {
+          if (s.status === "Resolved" || s.status === "Closed") {
+            resolvedSnags++;
+          } else {
+            openSnags++;
+            if (recentSnags.length < 5) {
+              recentSnags.push({
+                _id: s._id,
+                title: s.title,
+                status: s.status,
+                priority: s.priority || "Medium",
+                projectId: s.project,
+                projectName: projectNameMap.get(s.project?.toString()) || "Project",
+              });
+            }
+          }
+        });
+      } catch (_) { }
+    }
 
     let openIssues = 0;
-    try {
-      const issues = await Issue.find({ project: { $in: projectIds }, organization: orgId }, "status priority").lean();
-      issues.forEach((i) => {
-        if (i.status === "Open" || i.status === "Escalated" || i.status === "In Progress") openIssues++;
-      });
-    } catch (_) { }
+    if (projectIds.length > 0) {
+      try {
+        const issues = await Issue.find({ project: { $in: projectIds }, organization: orgId }, "status priority").lean();
+        issues.forEach((i) => {
+          if (i.status === "Open" || i.status === "Escalated" || i.status === "In Progress") openIssues++;
+        });
+      } catch (_) { }
+    }
 
     // 5. Stage Progress Percentages
-    const calcStagePct = (stg, fallback) => {
+    const calcStagePct = (stg) => {
       if (stg.total > 0) return Math.min(100, Math.round((stg.completed / stg.total) * 100));
-      return fallback;
+      return 0;
     };
 
-    const structuralPct = calcStagePct(stageMetrics.structural, totalTasks > 0 ? Math.min(100, Math.round((completedTasks / totalTasks) * 100) + 10) : 84);
-    const mepPct = calcStagePct(stageMetrics.mep, totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 85) : 62);
-    const finishingPct = calcStagePct(stageMetrics.finishing, totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 60) : 45);
-    const avgStageProgress = Math.round((structuralPct + mepPct + finishingPct) / 3);
+    const structuralPct = calcStagePct(stageMetrics.structural);
+    const mepPct = calcStagePct(stageMetrics.mep);
+    const finishingPct = calcStagePct(stageMetrics.finishing);
+    const avgStageProgress = (stageMetrics.structural.total > 0 || stageMetrics.mep.total > 0 || stageMetrics.finishing.total > 0)
+      ? Math.round((structuralPct + mepPct + finishingPct) / 3)
+      : 0;
 
     // 6. Portfolio Summary Metric Totals
-    const totalDeliverables = totalTasks > 0 ? totalTasks + milestones.length : (projects.length * 45 + 120);
+    const totalDeliverables = totalTasks + milestones.length;
     const totalAttentionNeeded = overdueTasks + openSnags + riskStatusCounts.Critical + riskStatusCounts.Active + openIssues;
-    const overallTaskPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : (projects.length > 0 ? 70 : 0);
+    const overallTaskPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     // 7. Quality vs Risk Percentages
     const qualityPassCount = completedTasks + resolvedSnags + riskStatusCounts.Resolved;
     const attentionItemCount = overdueTasks + openSnags + riskStatusCounts.Critical + riskStatusCounts.Active + openIssues;
-    const totalQualityRisk = (qualityPassCount + attentionItemCount) || 1;
-    const qualityPercentage = Math.max(10, Math.min(95, Math.round((qualityPassCount / totalQualityRisk) * 100)));
-    const riskPercentage = 100 - qualityPercentage;
+    const totalQualityRisk = qualityPassCount + attentionItemCount;
+    const qualityPercentage = totalQualityRisk > 0 ? Math.round((qualityPassCount / totalQualityRisk) * 100) : 100;
+    const riskPercentage = totalQualityRisk > 0 ? 100 - qualityPercentage : 0;
 
     // 8. Trajectory Data Points for All / Month / Week
     const monthlyList = Object.values(monthlyDataMap);
-    const trajectoryAll = monthlyList.map((m, idx) => ({
+    const trajectoryAll = monthlyList.map((m) => ({
       label: m.month,
-      delivered: m.delivered || Math.max(12, Math.round((completedTasks * (idx + 1)) / (monthlyList.length || 1))),
-      planned: m.planned || Math.max(15, Math.round((totalTasks * (idx + 1)) / (monthlyList.length || 1))),
+      delivered: m.delivered || 0,
+      planned: m.planned || 0,
     }));
 
     const trajectoryMonth = [
-      { label: "W1", delivered: Math.round(completedTasks * 0.25) || 18, planned: Math.round(totalTasks * 0.22) || 22 },
-      { label: "W2", delivered: Math.round(completedTasks * 0.5) || 35, planned: Math.round(totalTasks * 0.45) || 40 },
-      { label: "W3", delivered: Math.round(completedTasks * 0.75) || 52, planned: Math.round(totalTasks * 0.7) || 60 },
-      { label: "W4", delivered: completedTasks || 68, planned: totalTasks || 75 },
+      { label: "W1", delivered: Math.round(completedTasks * 0.25), planned: Math.round(totalTasks * 0.25) },
+      { label: "W2", delivered: Math.round(completedTasks * 0.5), planned: Math.round(totalTasks * 0.5) },
+      { label: "W3", delivered: Math.round(completedTasks * 0.75), planned: Math.round(totalTasks * 0.75) },
+      { label: "W4", delivered: completedTasks, planned: totalTasks },
     ];
 
     const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const trajectoryWeek = dayLabels.map((d, i) => ({
       label: d,
-      delivered: dailyCompletions[i] || [12, 28, 15, 34, 18, 25, 30][i],
-      planned: dailyActive[i] || [15, 30, 20, 36, 22, 28, 32][i],
+      delivered: dailyCompletions[i] || 0,
+      planned: dailyActive[i] || 0,
     }));
 
     // 9. Daily Activity List (Clustered bars)
-    const dailyActivityBars = dayLabels.map((d, i) => {
-      const h1 = Math.min(100, Math.max(20, (dailyActive[i] || [65, 85, 45, 90, 40, 75, 80][i])));
-      const h2 = Math.min(100, Math.max(15, (dailyCompletions[i] || [35, 55, 25, 70, 20, 45, 60][i])));
-      return { day: d, activeWorkers: h1, completedTasks: h2 };
-    });
+    const dailyActivityBars = dayLabels.map((d, i) => ({
+      day: d,
+      activeWorkers: dailyActive[i] || 0,
+      completedTasks: dailyCompletions[i] || 0,
+    }));
 
     // 10. Monthly Trade Allocation Stacked Bars
     const monthlyTradeAllocations = monthlyList.slice(-4).map((m) => {
-      const tot = m.total || (m.civil + m.mep + m.finishes) || 10;
-      const cPct = m.civil > 0 ? Math.round((m.civil / tot) * 100) : 40;
-      const mPct = m.mep > 0 ? Math.round((m.mep / tot) * 100) : 35;
-      const fPct = 100 - cPct - mPct;
+      const tot = m.total || (m.civil + m.mep + m.finishes) || 0;
+      const cPct = tot > 0 ? Math.round((m.civil / tot) * 100) : 0;
+      const mPct = tot > 0 ? Math.round((m.mep / tot) * 100) : 0;
+      const fPct = tot > 0 ? Math.max(0, 100 - cPct - mPct) : 0;
       return {
         month: m.month.toUpperCase(),
-        civilPct: Math.max(15, cPct),
-        mepPct: Math.max(15, mPct),
-        finishesPct: Math.max(10, fPct),
+        civilPct: cPct,
+        mepPct: mPct,
+        finishesPct: fPct,
       };
     });
 
@@ -563,6 +586,7 @@ export const GET = withAuth(async function (req) {
         total: openSnags + resolvedSnags,
         open: openSnags,
         resolved: resolvedSnags,
+        recentSnags,
       },
       recentProjects,
     });

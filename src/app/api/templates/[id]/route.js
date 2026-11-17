@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Template from "@/models/Template";
+// Registers the model .populate("category") needs — without it a fresh serverless
+// instance fails the first request with MissingSchemaError ("Error fetching template")
+import "@/models/TemplateCategory";
 import { withAuth, withAnyRolePermission } from "@/lib/middleware";
 
 /**

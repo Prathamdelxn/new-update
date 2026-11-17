@@ -29,6 +29,7 @@ export const GET = withAuth(async function (req) {
             ? user.organization
             : undefined,
         organization: user.organization,
+        organizationName: user.organization?.name,
         industryType: user.organization?.industryType || "construction",
         projects: (user.projects || []).map((p) => ({ project: p.project, role: p.role })),
       },

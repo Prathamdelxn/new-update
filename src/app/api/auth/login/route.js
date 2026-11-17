@@ -68,6 +68,7 @@ export async function POST(req) {
               ? user.organization
               : undefined,
           organization: user.organization,
+          organizationName: user.organization?.name,
           industryType: user.organization?.industryType || "construction",
           // Project-level roles — lets clients show actions like "Create Project"
           // that a project role can grant.

@@ -128,7 +128,14 @@ export function boqStatusEmail({ recipientName, itemDescription, itemNumber, sta
 }
 
 // ─── 3. Budget Request (sent to approver) ─────────────────────────────────────
-export function budgetRequestEmail({ approverName, requesterName, projectName, amount, reason }) {
+/** Amount in the project's own currency (was always "₹" with Indian digit grouping). */
+function money(amount, currency = "INR") {
+  const n = Number(amount) || 0;
+  if (currency === "INR") return `₹${n.toLocaleString("en-IN")}`;
+  return `${currency} ${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+export function budgetRequestEmail({ approverName, requesterName, projectName, amount, reason, currency }) {
   return wrap("Budget Approval Request", `
     <h2 style="margin:0 0 8px;color:#0F172A;font-size:20px;font-weight:700;">Budget Increase Request</h2>
     <p style="margin:0 0 24px;color:#64748B;font-size:14px;">
@@ -138,7 +145,7 @@ export function budgetRequestEmail({ approverName, requesterName, projectName, a
     <div style="background:#F8FAFF;border:1px solid #E2E8F0;border-radius:12px;padding:24px;margin-bottom:24px;">
       <table width="100%" cellpadding="0" cellspacing="0">
         ${infoRow("Project", projectName)}
-        ${infoRow("Requested Amount", `<strong style="color:#1E40AF;">₹${Number(amount).toLocaleString("en-IN")}</strong>`)}
+        ${infoRow("Requested Amount", `<strong style="color:#1E40AF;">${money(amount, currency)}</strong>`)}
         ${infoRow("Reason", reason || "—")}
         ${infoRow("Requested by", requesterName)}
       </table>
@@ -151,7 +158,7 @@ export function budgetRequestEmail({ approverName, requesterName, projectName, a
 }
 
 // ─── 4. Budget Decision (sent to requester) ───────────────────────────────────
-export function budgetDecisionEmail({ requesterName, approverName, projectName, amount, action }) {
+export function budgetDecisionEmail({ requesterName, approverName, projectName, amount, action, currency }) {
   const isApproved = action === "Approved";
   return wrap(`Budget Request ${action}`, `
     <h2 style="margin:0 0 8px;color:#0F172A;font-size:20px;font-weight:700;">Budget Request ${action}</h2>
@@ -162,7 +169,7 @@ export function budgetDecisionEmail({ requesterName, approverName, projectName, 
     <div style="background:#F8FAFF;border:1px solid #E2E8F0;border-radius:12px;padding:24px;margin-bottom:24px;">
       <table width="100%" cellpadding="0" cellspacing="0">
         ${infoRow("Project", projectName)}
-        ${infoRow("Amount", `₹${Number(amount).toLocaleString("en-IN")}`)}
+        ${infoRow("Amount", money(amount, currency))}
         ${infoRow("Decision", badge(action, isApproved ? "green" : "red"))}
         ${infoRow("Decided by", approverName)}
       </table>

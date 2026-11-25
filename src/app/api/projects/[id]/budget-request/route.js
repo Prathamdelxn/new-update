@@ -91,6 +91,7 @@ export const POST = withAuth(async function (req, { params }) {
             projectName: project.name,
             amount: survey.recommendedBudget,
             reason: survey.budgetReason,
+            currency: project.currency,
           }),
         });
       }

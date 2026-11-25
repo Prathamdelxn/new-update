@@ -84,6 +84,7 @@ export const PATCH = withAuth(async function (req, { params }) {
             projectName: project.name,
             amount: budgetItem.amount,
             action,
+            currency: project.currency,
           }),
         });
       }

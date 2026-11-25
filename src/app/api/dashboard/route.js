@@ -63,10 +63,58 @@ export const GET = withAuth(async function (req) {
     // 1. Fetch all projects strictly for this organization
     const projects = await Project.find(
       projectQuery,
-      "name code status priority startDate endDate expectedCompletionDate budget budgetHistory"
+      // `currency` was missing here, so the dashboard always fell back to "INR"
+      "name code status priority startDate endDate expectedCompletionDate budget budgetHistory currency"
     ).lean();
     const projectIds = projects.map((p) => p._id);
     const projectNameMap = new Map(projects.map(p => [p._id.toString(), p.name]));
+    const projectCurrencyMap = new Map(projects.map(p => [p._id.toString(), p.currency || "INR"]));
+    // Per-currency totals: projects in different currencies must never be added into one figure
+    const byCurrency = {};
+    const bucket = (cur) => (byCurrency[cur] ||= { incoming: 0, outgoing: 0, debitNotes: 0, net: 0 });
+
+    // Milestones, risks, snags, issues and transactions only need the project list:
+    // fetch them together instead of one database round trip after another
+    const hasProjects = projectIds.length > 0;
+    const scopedToProject = requestedProjectId && requestedProjectId !== 'all';
+    const byProjects = { project: { $in: projectIds }, organization: orgId };
+
+    const milestoneQuery = scopedToProject
+      ? { project: requestedProjectId, organization: orgId }
+      : hasProjects ? byProjects : null;
+
+    let txQuery = { organization: orgId };
+    if (scopedToProject) {
+      txQuery = {
+        $and: [
+          { $or: [{ organization: orgId }, { organization: { $exists: false } }] },
+          { project: requestedProjectId },
+        ],
+      };
+    } else if (hasProjects) {
+      txQuery = {
+        $or: [
+          { project: { $in: projectIds } },
+          { organization: orgId },
+        ],
+      };
+    }
+
+    const [milestones, risks, snagDocs, issueDocs, txDocs] = await Promise.all([
+      milestoneQuery
+        ? Milestone.find(milestoneQuery, "name tasks dueDate status project completedAt createdAt").lean()
+        : [],
+      hasProjects ? Risk.find(byProjects, "title status impact project").lean() : [],
+      // Snags, issues and transactions are optional on the dashboard: a failure leaves them empty
+      hasProjects
+        ? Snag.find(byProjects, "title status priority project createdAt").sort({ createdAt: -1 }).lean().catch(() => null)
+        : null,
+      hasProjects ? Issue.find(byProjects, "status priority").lean().catch(() => null) : null,
+      Transaction.find(txQuery).sort({ date: -1 }).limit(200).lean().catch((e) => {
+        console.error("Error fetching transactions in dashboard:", e);
+        return null;
+      }),
+    ]);
 
     // Project status breakdown
     const statusCounts = { "Planning": 0, "In Progress": 0, "On Hold": 0, "Completed": 0 };
@@ -78,27 +126,7 @@ export const GET = withAuth(async function (req) {
       totalBudget += Number(b) || 0;
     });
 
-    // 2. Fetch Milestones & Tasks strictly for the current organization's projects
-    let milestoneQuery = null;
-    if (requestedProjectId && requestedProjectId !== 'all') {
-      milestoneQuery = {
-        project: requestedProjectId,
-        organization: orgId,
-      };
-    } else if (projectIds.length > 0) {
-      milestoneQuery = {
-        project: { $in: projectIds },
-        organization: orgId,
-      };
-    }
-
-    const milestones = milestoneQuery
-      ? await Milestone.find(
-          milestoneQuery,
-          "name tasks dueDate status project completedAt createdAt"
-        ).lean()
-      : [];
-
+    // 2. Milestones & Tasks (fetched above)
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const tomorrow = new Date(today);
@@ -240,14 +268,7 @@ export const GET = withAuth(async function (req) {
       });
     });
 
-    // 3. Fetch Risks
-    const risks = projectIds.length > 0
-      ? await Risk.find(
-          { project: { $in: projectIds }, organization: orgId },
-          "title status impact project"
-        ).lean()
-      : [];
-
+    // 3. Risks (fetched above)
     const riskStatusCounts = { Critical: 0, Active: 0, Monitored: 0, Resolved: 0 };
     risks.forEach((r) => {
       if (riskStatusCounts[r.status] !== undefined) {
@@ -272,13 +293,9 @@ export const GET = withAuth(async function (req) {
     let openSnags = 0;
     let resolvedSnags = 0;
     const recentSnags = [];
-    if (projectIds.length > 0) {
+    if (snagDocs) {
       try {
-        const snags = await Snag.find(
-          { project: { $in: projectIds }, organization: orgId },
-          "title status priority project createdAt"
-        ).sort({ createdAt: -1 }).lean();
-        snags.forEach((s) => {
+        snagDocs.forEach((s) => {
           if (s.status === "Resolved" || s.status === "Closed") {
             resolvedSnags++;
           } else {
@@ -299,10 +316,9 @@ export const GET = withAuth(async function (req) {
     }
 
     let openIssues = 0;
-    if (projectIds.length > 0) {
+    if (issueDocs) {
       try {
-        const issues = await Issue.find({ project: { $in: projectIds }, organization: orgId }, "status priority").lean();
-        issues.forEach((i) => {
+        issueDocs.forEach((i) => {
           if (i.status === "Open" || i.status === "Escalated" || i.status === "In Progress") openIssues++;
         });
       } catch (_) { }
@@ -440,30 +456,14 @@ export const GET = withAuth(async function (req) {
     }
 
     try {
-      let txQuery = { organization: orgId };
-      if (requestedProjectId && requestedProjectId !== 'all') {
-        txQuery = {
-          $and: [
-            { $or: [{ organization: orgId }, { organization: { $exists: false } }] },
-            { project: requestedProjectId },
-          ],
-        };
-      } else if (projectIds.length > 0) {
-        txQuery = {
-          $or: [
-            { project: { $in: projectIds } },
-            { organization: orgId },
-          ],
-        };
-      }
-
-      const transactions = await Transaction.find(txQuery)
-        .sort({ date: -1 })
-        .limit(200)
-        .lean();
-
-      transactions.forEach((tx) => {
+      (txDocs || []).forEach((tx) => {
         const amt = Number(tx.amount) || 0;
+        const cur = projectCurrencyMap.get(tx.project?.toString()) || projects[0]?.currency || "INR";
+        const b = bucket(cur);
+        if (tx.type === "Incoming") b.incoming += amt;
+        else if (tx.type === "Outgoing" || tx.type === "Purchase Payment") b.outgoing += amt;
+        else if (tx.type === "Debit Note") b.debitNotes += amt;
+        b.net = b.incoming - b.outgoing;
         const txDate = tx.date ? new Date(tx.date) : (tx.createdAt ? new Date(tx.createdAt) : now);
         const isCurrentMonth = txDate.getMonth() === currentMonthIndex && txDate.getFullYear() === currentYear;
         const mKey = `${txDate.getFullYear()}-${txDate.getMonth()}`;
@@ -483,7 +483,7 @@ export const GET = withAuth(async function (req) {
         }
       });
 
-      transactions.slice(0, 6).forEach((tx) => {
+      (txDocs || []).slice(0, 6).forEach((tx) => {
         recentTransactions.push({
           _id: tx._id,
           type: tx.type,
@@ -495,6 +495,7 @@ export const GET = withAuth(async function (req) {
           category: tx.category,
           projectName: projectNameMap.get(tx.project?.toString()) || "Project",
           projectId: tx.project,
+          currency: projectCurrencyMap.get(tx.project?.toString()) || projects[0]?.currency || "INR",
         });
       });
     } catch (e) {
@@ -538,7 +539,14 @@ export const GET = withAuth(async function (req) {
         monthlyHistory,
         currentMonthName: now.toLocaleString('en-US', { month: 'long' }),
         recentTransactions,
-        currency: projects[0]?.currency || "INR",
+        // Headline currency = where most money moves (not just "the first project");
+        // byCurrency/mixedCurrencies let the UI show separate totals when they differ.
+        currency:
+          Object.entries(byCurrency).sort((a, b) => (b[1].incoming + b[1].outgoing) - (a[1].incoming + a[1].outgoing))[0]?.[0] ||
+          projects[0]?.currency ||
+          "INR",
+        byCurrency,
+        mixedCurrencies: Object.keys(byCurrency).length > 1,
       },
       stages: [
         { name: "Structural & Civil", progress: structuralPct, colorFrom: "from-indigo-500", colorTo: "to-indigo-700", textCol: "text-indigo-600" },

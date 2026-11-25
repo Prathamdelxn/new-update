@@ -10,11 +10,16 @@ import { sendEmail } from "@/lib/email";
 import puppeteerCore from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer";
+import { xt } from "@/lib/exportI18n";
 
 export const POST = withAuth(async function (req, { params }) {
   try {
     const { id } = await params;
-    const { reportType, startDate, endDate, customTargetEmail } = await req.json();
+    const { reportType, startDate, endDate, customTargetEmail, lang: rawLang } = await req.json();
+    // lang from the web app: Arabic report + email when the user has Arabic selected
+    const lang = rawLang === "ar" ? "ar" : "en";
+    const T = (s) => xt(lang, s);
+    const dateLocale = lang === "ar" ? "ar" : undefined;
 
     if (!startDate || !endDate) {
       return NextResponse.json({ message: "startDate and endDate are required" }, { status: 400 });
@@ -44,14 +49,14 @@ export const POST = withAuth(async function (req, { params }) {
     let dateRangeInfo = "";
 
     if (reportType === 'Daily') {
-      reportTitle = "Daily Project Report (Last 7 Days)";
-      dateRangeInfo = `Generated on: ${new Date().toLocaleDateString()}`;
+      reportTitle = T("Daily Project Report (Last 7 Days)");
+      dateRangeInfo = `${T("Generated on:")} ${new Date().toLocaleDateString(dateLocale)}`;
     } else if (reportType === 'Monthly') {
-      reportTitle = "Monthly Project Report (Last 6 Months)";
-      dateRangeInfo = `Generated on: ${new Date().toLocaleDateString()}`;
+      reportTitle = T("Monthly Project Report (Last 6 Months)");
+      dateRangeInfo = `${T("Generated on:")} ${new Date().toLocaleDateString(dateLocale)}`;
     } else {
-      reportTitle = "Custom Range Project Report";
-      dateRangeInfo = `Range: ${startLimit.toLocaleDateString()} - ${endLimit.toLocaleDateString()}`;
+      reportTitle = T("Custom Range Project Report");
+      dateRangeInfo = `${T("Range:")} ${startLimit.toLocaleDateString(dateLocale)} - ${endLimit.toLocaleDateString(dateLocale)}`;
     }
 
     // Filter tasks
@@ -98,34 +103,34 @@ export const POST = withAuth(async function (req, { params }) {
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
     // Generate HTML
-    let tasksHTML = "<h3>Completed Tasks</h3>";
+    let tasksHTML = `<h3>${T("Completed Tasks")}</h3>`;
     if (allCompletedTasks.length === 0) {
-      tasksHTML += "<p class='empty'>No tasks completed in this range.</p>";
+      tasksHTML += `<p class='empty'>${T("No tasks completed in this range.")}</p>`;
     } else {
       tasksHTML += `<table>
         <thead>
           <tr>
-            <th>Milestone</th>
-            <th>Task Title</th>
-            <th>Start Date</th>
-            <th>End Date</th>
-            <th>Completion Date</th>
-            <th>Created By</th>
-            <th>Completed By</th>
+            <th>${T("Milestone")}</th>
+            <th>${T("Task Title")}</th>
+            <th>${T("Start Date")}</th>
+            <th>${T("End Date")}</th>
+            <th>${T("Completion Date")}</th>
+            <th>${T("Created By")}</th>
+            <th>${T("Completed By")}</th>
           </tr>
         </thead>
         <tbody>`;
       allCompletedTasks.forEach(t => {
-        const startStr = t.startDate ? new Date(t.startDate).toLocaleDateString() : 'N/A';
-        const endStr = t.endDate ? new Date(t.endDate).toLocaleDateString() : 'N/A';
-        const createdByStr = t.createdByName || 'Unknown';
-        const completedByStr = t.completedByName || 'Unknown';
+        const startStr = t.startDate ? new Date(t.startDate).toLocaleDateString(dateLocale) : T('N/A');
+        const endStr = t.endDate ? new Date(t.endDate).toLocaleDateString(dateLocale) : T('N/A');
+        const createdByStr = t.createdByName || T('Unknown');
+        const completedByStr = t.completedByName || T('Unknown');
         tasksHTML += `<tr>
           <td>${t.milestoneName}</td>
           <td>${t.title}</td>
           <td>${startStr}</td>
           <td>${endStr}</td>
-          <td>${t.completedAtDate.toLocaleDateString()}</td>
+          <td>${t.completedAtDate.toLocaleDateString(dateLocale)}</td>
           <td>${createdByStr}</td>
           <td>${completedByStr}</td>
         </tr>`;
@@ -133,80 +138,80 @@ export const POST = withAuth(async function (req, { params }) {
       tasksHTML += `</tbody></table>`;
     }
 
-    let issuesHTML = "<h3>Reported Issues</h3>";
+    let issuesHTML = `<h3>${T("Reported Issues")}</h3>`;
     if (rangeIssues.length === 0) {
-      issuesHTML += "<p class='empty'>No issues reported in this range.</p>";
+      issuesHTML += `<p class='empty'>${T("No issues reported in this range.")}</p>`;
     } else {
       issuesHTML += `<table>
         <thead>
           <tr>
-            <th>Issue Title</th>
-            <th>Category</th>
-            <th>Priority</th>
-            <th>Status</th>
-            <th>Reported Date</th>
+            <th>${T("Issue Title")}</th>
+            <th>${T("Category")}</th>
+            <th>${T("Priority")}</th>
+            <th>${T("Status")}</th>
+            <th>${T("Reported Date")}</th>
           </tr>
         </thead>
         <tbody>`;
       rangeIssues.forEach(issue => {
         issuesHTML += `<tr>
           <td><b>${issue.title}</b><br><small>${issue.description || ''}</small></td>
-          <td>${issue.category || 'Other'}</td>
-          <td>${issue.priority}</td>
-          <td>${issue.status}</td>
-          <td>${new Date(issue.createdAt).toLocaleDateString()}</td>
+          <td>${T(issue.category || 'Other')}</td>
+          <td>${T(issue.priority)}</td>
+          <td>${T(issue.status)}</td>
+          <td>${new Date(issue.createdAt).toLocaleDateString(dateLocale)}</td>
         </tr>`;
       });
       issuesHTML += `</tbody></table>`;
     }
 
-    let snagsHTML = "<h3>Reported Snags</h3>";
+    let snagsHTML = `<h3>${T("Reported Snags")}</h3>`;
     if (rangeSnags.length === 0) {
-      snagsHTML += "<p class='empty'>No snags reported in this range.</p>";
+      snagsHTML += `<p class='empty'>${T("No snags reported in this range.")}</p>`;
     } else {
       snagsHTML += `<table>
         <thead>
           <tr>
-            <th>Snag Title</th>
-            <th>Priority</th>
-            <th>Status</th>
-            <th>Reported Date</th>
+            <th>${T("Snag Title")}</th>
+            <th>${T("Priority")}</th>
+            <th>${T("Status")}</th>
+            <th>${T("Reported Date")}</th>
           </tr>
         </thead>
         <tbody>`;
       rangeSnags.forEach(snag => {
         snagsHTML += `<tr>
           <td><b>${snag.title}</b><br><small>${snag.description || ''}</small></td>
-          <td>${snag.priority}</td>
-          <td>${snag.status}</td>
-          <td>${new Date(snag.createdAt).toLocaleDateString()}</td>
+          <td>${T(snag.priority)}</td>
+          <td>${T(snag.status)}</td>
+          <td>${new Date(snag.createdAt).toLocaleDateString(dateLocale)}</td>
         </tr>`;
       });
       snagsHTML += `</tbody></table>`;
     }
 
-    let logsHTML = "<h3>Activity Logs</h3>";
+    let logsHTML = `<h3>${T("Activity Logs")}</h3>`;
     if (rangeLogs.length === 0) {
-      logsHTML += "<p class='empty'>No activity logs in this range.</p>";
+      logsHTML += `<p class='empty'>${T("No activity logs in this range.")}</p>`;
     } else {
       logsHTML += `<table>
         <thead>
           <tr>
-            <th>User</th>
-            <th>Role</th>
-            <th>Action</th>
-            <th>Details</th>
-            <th>Timestamp</th>
+            <th>${T("User")}</th>
+            <th>${T("Role")}</th>
+            <th>${T("Action")}</th>
+            <th>${T("Details")}</th>
+            <th>${T("Timestamp")}</th>
           </tr>
         </thead>
         <tbody>`;
       rangeLogs.forEach(log => {
         logsHTML += `<tr>
-          <td><b>${log.userName || 'System'}</b></td>
-          <td>${log.userRole || 'Member'}</td>
+          <td><b>${log.userName || T('System')}</b></td>
+          <td>${T(log.userRole || 'Member')}</td>
           <td>${log.action}</td>
           <td>${log.details}</td>
-          <td>${new Date(log.timestamp).toLocaleString()}</td>
+          <td>${new Date(log.timestamp).toLocaleString(dateLocale)}</td>
         </tr>`;
       });
       logsHTML += `</tbody></table>`;
@@ -214,12 +219,13 @@ export const POST = withAuth(async function (req, { params }) {
 
     const htmlContent = `
       <!DOCTYPE html>
-      <html>
+      <html lang="${lang}" dir="${lang === "ar" ? "rtl" : "ltr"}">
       <head>
         <meta charset="utf-8">
+        ${lang === "ar" ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap">' : ""}
         <style>
           body {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-family: ${lang === "ar" ? "'Noto Sans Arabic', Tahoma, Arial, sans-serif" : "'Helvetica Neue', Helvetica, Arial, sans-serif"};
             padding: 30px;
             color: #1e293b;
           }
@@ -261,7 +267,7 @@ export const POST = withAuth(async function (req, { params }) {
             background-color: #f8fafc;
             border: 1px solid #e2e8f0;
             padding: 10px 12px;
-            text-align: left;
+            text-align: ${lang === "ar" ? "right" : "left"};
             font-size: 11px;
             font-weight: 700;
             color: #475569;
@@ -289,7 +295,7 @@ export const POST = withAuth(async function (req, { params }) {
       </head>
       <body>
         <div class="header-container">
-          <h2>Project: ${project.name || "Project Details"}</h2>
+          <h2>${T("Project:")} ${project.name || T("Project Details")}</h2>
           <h1>${reportTitle}</h1>
           <div class="date-range">${dateRangeInfo}</div>
         </div>
@@ -338,30 +344,30 @@ export const POST = withAuth(async function (req, { params }) {
     // Send Email
     await sendEmail({
       to: recipientEmail,
-      subject: `Project Report: ${project.name || "Details"}`,
+      subject: `${T("Project Report:")} ${project.name || T("Details")}`,
       html: `
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <div dir="${lang === "ar" ? "rtl" : "ltr"}" style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
           <div style="background: linear-gradient(135deg, #2563eb, #3b82f6); padding: 30px; text-align: center;">
             <h2 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 600; letter-spacing: 0.5px;">SkyStruct Lite</h2>
           </div>
           <div style="padding: 40px 30px; background-color: #ffffff;">
-            <h3 style="color: #0f172a; margin-top: 0; font-size: 22px; margin-bottom: 16px;">Your Project Report is Ready!</h3>
+            <h3 style="color: #0f172a; margin-top: 0; font-size: 22px; margin-bottom: 16px;">${T("Your Project Report is Ready!")}</h3>
             <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
-              Please find attached the latest detailed report for <strong>${project.name}</strong>.
+              ${T("Please find attached the latest detailed report for")} <strong>${project.name}</strong>.
             </p>
             <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 16px 20px; margin-bottom: 24px; border-radius: 0 8px 8px 0;">
               <p style="margin: 0; color: #334155; font-size: 15px; line-height: 1.5;">
-                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Report Timeline</span><br/>
+                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${T("Report Timeline")}</span><br/>
                 ${dateRangeInfo}
               </p>
             </div>
             <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 0;">
-              The attached PDF includes a comprehensive breakdown of all milestones, recently completed tasks, reported issues, and snag lists.
+              ${T("The attached PDF includes a comprehensive breakdown of all milestones, recently completed tasks, reported issues, and snag lists.")}
             </p>
           </div>
           <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} SkyStruct Lite Project Management. All rights reserved.
+              &copy; ${new Date().getFullYear()} ${T("SkyStruct Lite Project Management. All rights reserved.")}
             </p>
           </div>
         </div>

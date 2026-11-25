@@ -4,6 +4,8 @@ import LabourAttendance from "@/models/LabourAttendance";
 import { withAuth } from "@/lib/middleware";
 import User from "@/models/User";
 import * as XLSX from "xlsx";
+import Project from "@/models/Project";
+import { exportLang, xt, applySheetDirection } from "@/lib/exportI18n";
 
 export const GET = withAuth(async function (req) {
   try {
@@ -14,6 +16,7 @@ export const GET = withAuth(async function (req) {
     const month = url.searchParams.get("month"); // Format: YYYY-MM
     const startDateParam = url.searchParams.get("startDate");
     const endDateParam = url.searchParams.get("endDate");
+    const lang = exportLang(url); // ?lang=ar → Arabic headers + right-to-left sheet
     
     if (!projectId) {
       return NextResponse.json({ message: "Missing required query parameter: projectId" }, { status: 400 });
@@ -52,16 +55,18 @@ export const GET = withAuth(async function (req) {
     const workbook = XLSX.utils.book_new();
 
     if (labourRecords.length > 0) {
-      const summaryMap = {};
+      const projectDoc = await Project.findById(projectId).select("currency").lean();
+        const currency = projectDoc?.currency || "AED"; // project currency (was hard-coded)
+        const summaryMap = {};
 
       labourRecords.forEach(rec => {
         if (!rec.labour) return;
         const lId = rec.labour._id.toString();
         if (!summaryMap[lId]) {
           summaryMap[lId] = {
-            name: rec.labour.name || "Unknown",
-            type: rec.labour.type || "-",
-            paymentCycle: rec.labour.paymentCycle || "-",
+            name: rec.labour.name || xt(lang, "Unknown"),
+            type: xt(lang, rec.labour.type) || "-",
+            paymentCycle: xt(lang, rec.labour.paymentCycle) || "-",
             wageAmount: rec.labour.wageAmount || 0,
             presentCount: 0,
             halfDayCount: 0,
@@ -76,14 +81,14 @@ export const GET = withAuth(async function (req) {
       const labourSummaryData = Object.values(summaryMap).map(s => {
         const earned = (s.presentCount * s.wageAmount) + (s.halfDayCount * (s.wageAmount / 2));
         return {
-          "Labour Name": s.name,
-          Type: s.type,
-          "Payment Cycle": s.paymentCycle,
-          "Base Wage (AED)": s.wageAmount,
-          "Days Present": s.presentCount,
-          "Half Days": s.halfDayCount,
-          "Days Absent": s.absentCount,
-          "Total Earned (AED)": earned
+          [xt(lang, "Labour Name")]: s.name,
+          [xt(lang, "Type")]: s.type,
+          [xt(lang, "Payment Cycle")]: s.paymentCycle,
+          [`${xt(lang, "Base Wage")} (${currency})`]: s.wageAmount,
+          [xt(lang, "Days Present")]: s.presentCount,
+          [xt(lang, "Half Days")]: s.halfDayCount,
+          [xt(lang, "Days Absent")]: s.absentCount,
+          [`${xt(lang, "Total Earned")} (${currency})`]: earned
         };
       });
 
@@ -96,13 +101,14 @@ export const GET = withAuth(async function (req) {
       ];
       labourWorksheet['!cols'] = colWidths;
       
-      XLSX.utils.book_append_sheet(workbook, labourWorksheet, "Payroll Summary");
+      XLSX.utils.book_append_sheet(workbook, labourWorksheet, xt(lang, "Payroll Summary"));
     } else {
       // Empty sheet if no records
-      const ws = XLSX.utils.json_to_sheet([{ Message: "No labour attendance records found for this period." }]);
-      XLSX.utils.book_append_sheet(workbook, ws, "Payroll Summary");
+      const ws = XLSX.utils.json_to_sheet([{ [xt(lang, "Message")]: xt(lang, "No labour attendance records found for this period.") }]);
+      XLSX.utils.book_append_sheet(workbook, ws, xt(lang, "Payroll Summary"));
     }
 
+    applySheetDirection(workbook, lang);
     const buf = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 
     const fileSuffix = (startDateParam && endDateParam) ? `${startDateParam}_to_${endDateParam}` : (month ? month : new Date().toISOString().slice(0, 7));

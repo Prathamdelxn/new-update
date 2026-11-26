@@ -6,6 +6,7 @@ import { emitToProject } from "@/lib/socket-server";
 import Role from "@/models/Role";
 import User from "@/models/User";
 import SiteSurvey from "@/models/SiteSurvey";
+import { workCountsByProject, progressOf } from "@/lib/projectProgress";
 import Snag from "@/models/Snag";
 import Customer from "@/models/Customer";
 import Activity from "@/models/Activity";
@@ -33,27 +34,48 @@ async function userHasPermission(req, projectId, permission) {
   return hasPermission(perms, permission);
 }
 
+const USER_FIELDS = "+__enc_name +__enc_phoneNumber";
+
+// Roles are loaded without their change log (select "-auditTrail").
+// People on a project are sent without their own audit trail (tens of KB per user) and their
+// device push tokens (private). (Mongoose can't mix "+hidden" and "-field" in one select, so
+// they are removed here.) With the role change below this took the project response from ~147KB to ~22KB.
+function slimUser(u) {
+  if (u && typeof u === "object") {
+    delete u.auditTrail;
+    delete u.pushTokens;
+  }
+  return u;
+}
+
 // GET a single project
 export const GET = withPermission(async function (req, { params }) {
   try {
     const { id } = await params;
     await dbConnect();
     const project = await Project.findOne({ _id: id, organization: req.user.organizationId })
-      .populate({ path: "createdBy", select: "+__enc_name +__enc_phoneNumber", populate: { path: "role" } })
-      .populate({ path: "members.user", select: "+__enc_name +__enc_phoneNumber", populate: { path: "role" } })
-      .populate({ path: "members.role" })
-      .populate({ path: "siteSurveyor", select: "+__enc_name +__enc_phoneNumber", populate: { path: "role" } })
-      .populate({ path: "snaggedBy", select: "+__enc_name +__enc_phoneNumber", populate: { path: "role" } })
-      .populate({ path: "handoverApprover", select: "+__enc_name +__enc_phoneNumber", populate: { path: "role" } });
+      .populate({ path: "createdBy", select: USER_FIELDS, populate: { path: "role", select: "-auditTrail" } })
+      .populate({ path: "members.user", select: USER_FIELDS, populate: { path: "role", select: "-auditTrail" } })
+      .populate({ path: "members.role", select: "-auditTrail" })
+      .populate({ path: "siteSurveyor", select: USER_FIELDS, populate: { path: "role", select: "-auditTrail" } })
+      .populate({ path: "snaggedBy", select: USER_FIELDS, populate: { path: "role", select: "-auditTrail" } })
+      .populate({ path: "handoverApprover", select: USER_FIELDS, populate: { path: "role", select: "-auditTrail" } });
 
     if (!project) {
       return NextResponse.json({ message: "Project not found" }, { status: 404 });
     }
 
-    const survey = await SiteSurvey.findOne({ project: id }, { status: 1, rejectionReason: 1 });
+    const [survey, workCounts] = await Promise.all([
+      SiteSurvey.findOne({ project: id }, { status: 1, rejectionReason: 1 }),
+      workCountsByProject([project._id]),
+    ]);
     const projectObj = project.toObject();
+    ["createdBy", "siteSurveyor", "snaggedBy", "handoverApprover"].forEach((k) => slimUser(projectObj[k]));
+    (projectObj.members || []).forEach((m) => slimUser(m?.user));
     projectObj.surveyStatus = survey ? survey.status : null;
     projectObj.surveyRejectionReason = survey ? survey.rejectionReason : null;
+    // Real progress (work done), not a fixed number per status
+    projectObj.progress = progressOf(project.status, workCounts.get(project._id.toString()));
 
     return NextResponse.json(projectObj);
   } catch (error) {

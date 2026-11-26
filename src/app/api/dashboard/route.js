@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Project from "@/models/Project";
 import Milestone from "@/models/Milestone";
+import { progressOf } from "@/lib/projectProgress";
 import Risk from "@/models/Risk";
 import Snag from "@/models/Snag";
 import Issue from "@/models/Issue";
@@ -164,6 +165,18 @@ export const GET = withAuth(async function (req) {
       monthlyDataMap[key] = { month: key, delivered: 0, planned: 0, civil: 0, mep: 0, finishes: 0, total: 0 };
     }
 
+    // Every work item with its due date and (if done) completion date, for the planned-vs-delivered
+    // chart; and per-project work counts for real progress (same rules as lib/projectProgress).
+    const workItems = [];
+    const workCounts = new Map();
+    const countWork = (projectId, done) => {
+      const key = String(projectId);
+      const c = workCounts.get(key) || { total: 0, completed: 0 };
+      c.total += 1;
+      if (done) c.completed += 1;
+      workCounts.set(key, c);
+    };
+
     milestones.forEach((m) => {
       const projName = projectNameMap.get(m.project?.toString()) || "Project";
       const mNameLower = (m.name || "").toLowerCase();
@@ -191,6 +204,9 @@ export const GET = withAuth(async function (req) {
 
       const mTasks = m.tasks || [];
       if (mTasks.length === 0) {
+        const mDone = m.status === "Completed";
+        workItems.push({ due: m.dueDate, done: mDone ? m.completedAt || null : null });
+        countWork(m.project, mDone);
         totalTasks++;
         stageMetrics[stageKey].total++;
         if (m.status === "Completed") {
@@ -200,6 +216,8 @@ export const GET = withAuth(async function (req) {
       }
 
       mTasks.forEach((t) => {
+        workItems.push({ due: t.endDate, done: t.isCompleted ? t.completedAt || null : null });
+        countWork(m.project, !!t.isCompleted);
         totalTasks++;
         stageMetrics[stageKey].total++;
 
@@ -279,6 +297,7 @@ export const GET = withAuth(async function (req) {
     });
 
     const criticalRisks = risks
+      .filter((r) => !["Resolved", "Closed"].includes(r.status))
       .filter((r) => r.status === "Critical" || r.impact === "Very High" || r.impact === "High")
       .slice(0, 5)
       .map((r) => ({
@@ -351,25 +370,63 @@ export const GET = withAuth(async function (req) {
 
     // 8. Trajectory Data Points for All / Month / Week
     const monthlyList = Object.values(monthlyDataMap);
-    const trajectoryAll = monthlyList.map((m) => ({
-      label: m.month,
-      delivered: m.delivered || 0,
-      planned: m.planned || 0,
-    }));
 
-    const trajectoryMonth = [
-      { label: "W1", delivered: Math.round(completedTasks * 0.25), planned: Math.round(totalTasks * 0.25) },
-      { label: "W2", delivered: Math.round(completedTasks * 0.5), planned: Math.round(totalTasks * 0.5) },
-      { label: "W3", delivered: Math.round(completedTasks * 0.75), planned: Math.round(totalTasks * 0.75) },
-      { label: "W4", delivered: completedTasks, planned: totalTasks },
-    ];
+    // Planned = work due in the period (done or not); Delivered = work completed in the period.
+    // Real dates only (this used to mix years by month name, drop finished tasks from "planned",
+    // count the week view across all time, and draw the month view as a fixed 25/50/75/100% ramp).
+    const countIn = (from, to) => {
+      let planned = 0;
+      let delivered = 0;
+      workItems.forEach((w) => {
+        const due = w.due ? new Date(w.due) : null;
+        const done = w.done ? new Date(w.done) : null;
+        if (due && due >= from && due < to) planned++;
+        if (done && done >= from && done < to) delivered++;
+      });
+      return { planned, delivered };
+    };
 
+    // Last 6 months
+    const trajectoryAll = [];
+    for (let i = 5; i >= 0; i--) {
+      const from = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const to = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      trajectoryAll.push({ label: monthNames[from.getMonth()], ...countIn(from, to) });
+    }
+
+    // This month, week by week (days 1–7, 8–14, …)
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const trajectoryMonth = [];
+    for (let w = 0; w < 5; w++) {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1 + w * 7);
+      if (from >= nextMonth) break;
+      const weekEnd = new Date(now.getFullYear(), now.getMonth(), 8 + w * 7);
+      trajectoryMonth.push({ label: `W${w + 1}`, ...countIn(from, weekEnd < nextMonth ? weekEnd : nextMonth) });
+    }
+
+    // This week, day by day (Sun–Sat)
     const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const trajectoryWeek = dayLabels.map((d, i) => ({
-      label: d,
-      delivered: dailyCompletions[i] || 0,
-      planned: dailyActive[i] || 0,
-    }));
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    const trajectoryWeek = dayLabels.map((d, i) => {
+      const from = new Date(weekStart);
+      from.setDate(weekStart.getDate() + i);
+      const to = new Date(from);
+      to.setDate(from.getDate() + 1);
+      return { label: d, ...countIn(from, to) };
+    });
+
+    // Real progress per project (dashboard "Top Projects"): unfinished first, most advanced first
+    const projectProgress = projects
+      .filter((p) => p.status !== "Cancelled")
+      .map((p) => ({
+        _id: p._id,
+        name: p.name,
+        status: p.status,
+        progress: progressOf(p.status, workCounts.get(String(p._id))),
+      }))
+      .sort((x, y) => Number(x.progress === 100) - Number(y.progress === 100) || y.progress - x.progress)
+      .slice(0, 8);
 
     // 9. Daily Activity List (Clustered bars)
     const dailyActivityBars = dayLabels.map((d, i) => ({
@@ -412,7 +469,7 @@ export const GET = withAuth(async function (req) {
         ? 100
         : mTasks.length > 0
           ? Math.round((compTasks / mTasks.length) * 100)
-          : (m.status === 'In Progress' ? 50 : 0);
+          : 0; // no tasks to measure: don't invent a number
       const projName = projectNameMap.get(m.project?.toString()) || "Project";
       return {
         _id: m._id,
@@ -559,6 +616,7 @@ export const GET = withAuth(async function (req) {
         dailyActual: dailyCompletions,
         dailyPlanned: dailyActive,
       },
+      projectProgress,
       trajectory: {
         all: trajectoryAll,
         month: trajectoryMonth,

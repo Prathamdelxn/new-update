@@ -5,6 +5,7 @@ import Template from "@/models/Template";
 import TemplateCategory from "@/models/TemplateCategory";
 import User from "@/models/User";
 import SiteSurvey from "@/models/SiteSurvey";
+import { workCountsByProject, progressOf } from "@/lib/projectProgress";
 import { withAuth } from "@/lib/middleware"; // trigger rebuild
 import { hasPermission, isFullAccessRole } from "@/lib/permissions";
 
@@ -148,6 +149,8 @@ export const GET = withAuth(async function (req) {
       .populate('siteSurveyor', 'name email')
       // Member role permissions let the web show per-project actions (edit/delete)
       .populate('members.role', 'name permissions isSystemRole')
+      // The list never shows the change log (only the project page does), and it was ~70% of the payload
+      .select('-auditTrail')
       .sort({ createdAt: -1 });
 
     // Decrypt populated customer fields if using encryption
@@ -165,10 +168,13 @@ export const GET = withAuth(async function (req) {
     });
 
     const projectIds = projects.map(p => p._id);
-    const surveys = await SiteSurvey.find(
-      { project: { $in: projectIds } },
-      { project: 1, status: 1, rejectionReason: 1 }
-    );
+    const [surveys, workCounts] = await Promise.all([
+      SiteSurvey.find(
+        { project: { $in: projectIds } },
+        { project: 1, status: 1, rejectionReason: 1 }
+      ),
+      workCountsByProject(projectIds),
+    ]);
     const surveyMap = {};
     surveys.forEach(s => {
       surveyMap[s.project.toString()] = s;
@@ -179,6 +185,8 @@ export const GET = withAuth(async function (req) {
       const s = surveyMap[proj._id.toString()];
       projObj.surveyStatus = s ? s.status : null;
       projObj.surveyRejectionReason = s ? s.rejectionReason : null;
+      // Real progress (work done), not a fixed number per status
+      projObj.progress = progressOf(proj.status, workCounts.get(proj._id.toString()));
       return projObj;
     });
 

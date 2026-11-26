@@ -11,6 +11,11 @@ import puppeteerCore from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer";
 import { xt } from "@/lib/exportI18n";
+import Organization from "@/models/Organization";
+import { PDF_LOGO_DATA_URI } from "@/lib/pdfLogo";
+
+// Same terms line as the web's downloaded project report (lib/pdf/pdfExport.ts PDF_TERMS.report)
+const REPORT_TERMS = "Terms & Conditions: This report records site progress as reported on the stated date. Quantities and progress figures are indicative and subject to joint measurement and verification.";
 
 export const POST = withAuth(async function (req, { params }) {
   try {
@@ -38,6 +43,11 @@ export const POST = withAuth(async function (req, { params }) {
     if (!project) {
       return NextResponse.json({ message: "Project not found" }, { status: 404 });
     }
+    const org = project.organization
+      ? await Organization.findById(project.organization).select("name").lean().catch(() => null)
+      : null;
+    const orgName = org?.name || "SkyStruct";
+    const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
     // Determine exact date bounds based on frontend logic
     let startLimit = new Date(startDate);
@@ -217,6 +227,11 @@ export const POST = withAuth(async function (req, { params }) {
       logsHTML += `</tbody></table>`;
     }
 
+    // "Generated on: 26/11/2026" / "Range: … - …" → label + value for the letterhead
+    const cut = dateRangeInfo.indexOf(": ");
+    const periodLabel = cut > 0 ? dateRangeInfo.slice(0, cut) : T("Period");
+    const periodValue = cut > 0 ? dateRangeInfo.slice(cut + 2) : dateRangeInfo;
+
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="${lang}" dir="${lang === "ar" ? "rtl" : "ltr"}">
@@ -224,82 +239,59 @@ export const POST = withAuth(async function (req, { params }) {
         <meta charset="utf-8">
         ${lang === "ar" ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap">' : ""}
         <style>
+          /* Standard SkyStruct PDF format (same letterhead + tables as the web's downloaded PDFs) */
+          * { box-sizing: border-box; }
           body {
-            font-family: ${lang === "ar" ? "'Noto Sans Arabic', Tahoma, Arial, sans-serif" : "'Helvetica Neue', Helvetica, Arial, sans-serif"};
-            padding: 30px;
-            color: #1e293b;
+            font-family: ${lang === "ar" ? "'Noto Sans Arabic', Tahoma, Arial, sans-serif" : "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"};
+            margin: 0; padding: 0; color: #0f172a; font-size: 11px; line-height: 1.45;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
           }
-          .header-container {
-            border-bottom: 2px solid #e2e8f0;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-          }
-          h1 {
-            font-size: 24px;
-            color: #0f172a;
-            margin: 0 0 8px 0;
-          }
-          h2 {
-            font-size: 16px;
-            color: #3b82f6;
-            margin: 0 0 4px 0;
-            font-weight: 600;
-          }
+          .sd-head { display: table; width: 100%; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 14px; }
+          .sd-head > div { display: table-cell; vertical-align: middle; }
+          .sd-brand { display: table; }
+          .sd-brand > div { display: table-cell; vertical-align: middle; }
+          .sd-logo { padding-inline-end: 12px; }
+          .sd-logo img { height: 38px; width: auto; display: block; }
+          .sd-org-wrap { padding-inline-start: 12px; border-inline-start: 1px solid #e2e8f0; }
+          .sd-org { font-size: 12.5px; font-weight: 800; color: #0f172a; }
+          .sd-doc { text-align: end; }
+          .sd-doc-type { font-size: 15px; font-weight: 900; color: #1e3a8a; letter-spacing: 1px; text-transform: uppercase; }
+          .sd-meta { margin-top: 4px; margin-inline-start: auto; border-collapse: collapse; font-size: 9.5px; }
+          .sd-meta td { padding: 0.5px 0; }
+          .sd-meta td.k { color: #64748b; padding-inline-end: 10px; text-align: end; white-space: nowrap; }
+          .sd-meta td.v { color: #0f172a; font-weight: 700; text-align: end; }
           h3 {
-            font-size: 15px;
-            color: #1e293b;
-            margin: 30px 0 12px 0;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 1px solid #cbd5e1;
-            padding-bottom: 6px;
+            font-size: 10px; font-weight: 800; color: #1e3a8a; text-transform: uppercase; letter-spacing: .8px;
+            border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin: 16px 0 6px; page-break-after: avoid;
           }
-          .date-range {
-            font-size: 13px;
-            color: #64748b;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 25px;
-          }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 10.5px; }
+          thead { display: table-header-group; }
+          tr { page-break-inside: avoid; }
           th {
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
-            padding: 10px 12px;
-            text-align: ${lang === "ar" ? "right" : "left"};
-            font-size: 11px;
-            font-weight: 700;
-            color: #475569;
-            text-transform: uppercase;
+            background: #1e3a8a; color: #ffffff; border: 1px solid #1e3a8a; font-weight: 700; font-size: 9px;
+            text-transform: uppercase; letter-spacing: .5px; padding: 6px 8px; text-align: start;
           }
-          td {
-            border: 1px solid #e2e8f0;
-            padding: 10px 12px;
-            font-size: 12px;
-            color: #334155;
-          }
-          tr:nth-child(even) td {
-            background-color: #fafbfc;
-          }
-          .empty {
-            font-size: 13px;
-            color: #94a3b8;
-            font-style: italic;
-            margin: 15px 0 25px 0;
-          }
-          small {
-            color: #64748b;
-          }
+          td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; color: #1e293b; }
+          tbody tr:nth-child(even) td { background: #f8fafc; }
+          .empty { font-size: 11px; color: #94a3b8; font-style: italic; margin: 6px 0 14px; padding: 10px; border: 1px dashed #e2e8f0; border-radius: 6px; text-align: center; }
+          small { color: #64748b; }
         </style>
       </head>
       <body>
-        <div class="header-container">
-          <h2>${T("Project:")} ${project.name || T("Project Details")}</h2>
-          <h1>${reportTitle}</h1>
-          <div class="date-range">${dateRangeInfo}</div>
+        <div class="sd-head">
+          <div class="sd-brand">
+            <div class="sd-logo"><img src="${PDF_LOGO_DATA_URI}" alt="SkyStruct" /></div>
+            <div class="sd-org-wrap"><div class="sd-org">${esc(orgName)}</div></div>
+          </div>
+          <div class="sd-doc">
+            <div class="sd-doc-type">${esc(reportTitle)}</div>
+            <table class="sd-meta">
+              <tr><td class="k">${T("Project")}</td><td class="v">${esc(project.name || T("Project Details"))}</td></tr>
+              <tr><td class="k">${esc(periodLabel)}</td><td class="v">${esc(periodValue)}</td></tr>
+            </table>
+          </div>
         </div>
-        
+
         ${tasksHTML}
         ${issuesHTML}
         ${snagsHTML}
@@ -327,7 +319,23 @@ export const POST = withAuth(async function (req, { params }) {
 
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: "networkidle0" });
-    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+    const footerDate = new Date().toLocaleDateString(dateLocale, { day: "2-digit", month: "short", year: "numeric" });
+    const pdfBuffer = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: "<div></div>",
+      // Standard footer, like the web's PDFs: terms line + page number + organisation and date
+      footerTemplate: `
+        <div dir="${lang === "ar" ? "rtl" : "ltr"}" style="width:100%; margin:0 12mm; padding-top:5px; border-top:1px solid #cbd5e1; font-family:Arial, sans-serif; font-size:7px; color:#64748b; display:flex; justify-content:space-between; gap:12px; -webkit-print-color-adjust:exact;">
+          <div style="flex:1; line-height:1.35;">${esc(T(REPORT_TERMS))}</div>
+          <div style="text-align:end; white-space:nowrap; line-height:1.35;">
+            <div style="font-weight:700; color:#1e3a8a;">${T("Page")} <span class="pageNumber"></span> ${T("of")} <span class="totalPages"></span></div>
+            <div>${esc(orgName)} · ${esc(footerDate)}</div>
+          </div>
+        </div>`,
+      margin: { top: "14mm", bottom: "22mm", left: "12mm", right: "12mm" },
+    });
     await browser.close();
 
     // Determine recipient

@@ -87,6 +87,13 @@ const AR = {
   "Closed": "مغلق",
   "Draft": "مسودة",
   "Completed": "مكتمل",
+  // standard PDF letterhead / footer (emailed project report)
+  "Terms & Conditions: This report records site progress as reported on the stated date. Quantities and progress figures are indicative and subject to joint measurement and verification.": "الشروط والأحكام: يسجل هذا التقرير تقدم العمل في الموقع كما تم الإبلاغ عنه في التاريخ المذكور. الكميات وأرقام التقدم إرشادية وتخضع للقياس والتحقق المشترك.",
+  "Page": "صفحة",
+  "of": "من",
+  "Project": "المشروع",
+  "Generated on": "تاريخ الإنشاء",
+  "Period": "الفترة",
 };
 
 /** 'ar' when the request asks for Arabic, otherwise 'en'. */
